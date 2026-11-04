@@ -305,7 +305,9 @@ void SIM4G_Init(void)
     SIM4G_ExecAndPrint("MODEM-SMSC", "AT+CSCA?\r\n", 500);
     SIM4G_ExecAndPrint("MODEM-CREG", "AT+CREG?\r\n", 300);
     SIM4G_ExecAndPrint("MODEM-CEREG","AT+CEREG?\r\n", 300);
-    SIM4G_ExecAndPrint("MODEM-CGSMS","AT+CGSMS?\r\n", 300);
+    /* Ep buoc modem su dung Packet Domain (LTE NAS) de gui SMS, khong dung CS domain */
+    SIM4G_SendCmd("AT+CGSMS=0\r\n", "OK", 300);
+    SIM4G_ExecAndPrint("MODEM-CGSMS-SET0","AT+CGSMS?\r\n", 300);
     SIM4G_ExecAndPrint("MODEM-CSMS", "AT+CSMS?\r\n", 300);
     /* Gui tin nhan mien phi "TK" den 900 de kiem tra so du va chieu gui */
     DEBUG_UART_SendString("[TEST-900] Dang gui TK den 900 de kiem tra so du...\r\n");
