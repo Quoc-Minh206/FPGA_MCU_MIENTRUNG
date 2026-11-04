@@ -429,6 +429,16 @@
               <FileType>5</FileType>
               <FilePath>.\system_shared.h</FilePath>
             </File>
+            <File>
+              <FileName>debug_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\debug_uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>debug_uart.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\debug_uart.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

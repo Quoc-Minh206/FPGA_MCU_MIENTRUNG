@@ -1,14 +1,17 @@
 /******************************************************************************
- * sim4g.c  -  Driver 4G LTE SIM A7680C / SIM800 cho SONiX SN32F407 EVK
+ * sim4g.c  -  Driver 4G LTE SIM A7680C cho SONiX SN32F407 EVK
  *
- *  - UART1 115200 8N1, chan P2.2 (UTXD1) / P2.3 (URXD1) -> cum J7 tren EVK
- *  - Chan Reset / Power: P2.1
+ *  - UART1: 115200 bps, 8N1
+ *  - P2.2 (UTXD1) -> RXD SIM A7680C (Cụm J7 Chân 2 - Bảng 4 constrain.pdf)
+ *  - P2.3 (URXD1) -> TXD SIM A7680C (Cụm J7 Chân 3 - Bảng 4 constrain.pdf)
+ *  - Nguồn module SIM được cấp trực tiếp từ mạch nguồn IP5306 / Pin Li-ion.
  *****************************************************************************/
 #include <SN32F400.h>
 #include "sim4g.h"
 #include "system_shared.h"
+#include "debug_uart.h"
 
-/*=============================  CAU HINH  =================================*/
+/*=============================  CẤU HÌNH UART1  ============================*/
 #define UART1_CLKEN_BIT     (1UL << 17)     /* SYS1_AHBCLKEN.UART1CLKEN     */
 
 /* PFPA_UART1: [3:2] URXD1 = 1 -> P2.3 ; [1:0] UTXD1 = 1 -> P2.2            */
@@ -17,13 +20,13 @@
 extern uint32_t GetTick_ms(void);
 extern void     Delay_ms(uint32_t ms);
 
-/*=============================  BIEN TOAN CUC  ============================*/
+/*=============================  BIẾN TOÀN CỤC  ============================*/
 volatile char     g_sim_rx_buf[SIM_RX_BUFFER_SIZE];
 volatile uint16_t g_sim_rx_len = 0;
 volatile uint8_t  g_sim_ready = 0;
 volatile uint8_t  g_sim_sms_sent = 0;
 
-/*=============================  HAM TIEN ICH  =============================*/
+/*=============================  HÀM TIỆN ÍCH  =============================*/
 static uint32_t u_strlen(const char *s)
 {
     uint32_t len = 0;
@@ -53,110 +56,146 @@ static const char *u_strchr(const char *s, char c)
     return 0;
 }
 
-void SIM4G_ClearRx(void)
+/* Kiểm tra chuỗi con an toàn luồng, chống race condition với ngắt UART1 */
+static uint8_t SIM4G_RxContains(const char *needle)
 {
-    uint16_t i;
-    for (i = 0; i < SIM_RX_BUFFER_SIZE; i++) g_sim_rx_buf[i] = 0;
-    g_sim_rx_len = 0;
+    uint8_t found = 0;
+    if (!needle) return 0;
+    __disable_irq();
+    if (g_sim_rx_len < SIM_RX_BUFFER_SIZE) {
+        g_sim_rx_buf[g_sim_rx_len] = '\0';
+    } else {
+        g_sim_rx_buf[SIM_RX_BUFFER_SIZE - 1] = '\0';
+    }
+    if (u_strstr((const char *)g_sim_rx_buf, needle)) {
+        found = 1;
+    }
+    __enable_irq();
+    return found;
 }
 
-/*=============================  NGAT UART1  ===============================*/
+/* Kiểm tra ký tự an toàn luồng */
+static uint8_t SIM4G_RxContainsChar(char c)
+{
+    uint8_t found = 0;
+    __disable_irq();
+    if (g_sim_rx_len < SIM_RX_BUFFER_SIZE) {
+        g_sim_rx_buf[g_sim_rx_len] = '\0';
+    } else {
+        g_sim_rx_buf[SIM_RX_BUFFER_SIZE - 1] = '\0';
+    }
+    if (u_strchr((const char *)g_sim_rx_buf, c)) {
+        found = 1;
+    }
+    __enable_irq();
+    return found;
+}
+
+void SIM4G_ClearRx(void)
+{
+    __disable_irq();
+    g_sim_rx_len = 0;
+    g_sim_rx_buf[0] = '\0';
+    __enable_irq();
+}
+
+/*=============================  NGẮT UART1  ===============================*/
+/* Tuyệt đối không dùng vòng lặp while((ii&1)==0) không giới hạn để chống kẹt core */
 void UART1_IRQHandler(void)
 {
     uint32_t ii = SN_UART1->II;
-    uint32_t ls;
+    uint32_t ls = SN_UART1->LS;
+    (void)ii;
 
-    while ((ii & 0x01UL) == 0UL)            /* Co ngat dang cho             */
+    /* Nếu có lỗi đường truyền (Overrun, Parity, Framing, Break), đọc bỏ để xóa cờ */
+    if (ls & 0x8EUL) {
+        volatile uint32_t dummy = SN_UART1->RB;
+        (void)dummy;
+    }
+
+    /* Đọc cạn các byte đang có trong RX FIFO vào bộ đệm */
+    while (SN_UART1->LS & 0x01UL)
     {
-        switch ((ii >> 1) & 0x07UL)
+        uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
+        if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
         {
-        case 3:                             /* RLS: Loi duong truyen        */
-            ls = SN_UART1->LS;
-            (void)ls;
-            (void)SN_UART1->RB;
-            break;
-
-        case 2:                             /* RDA: Co du lieu nhan         */
-        case 6:                             /* Timeout ky tu                */
-            while (SN_UART1->LS & 0x01UL)   /* RDR                          */
-            {
-                uint8_t b = (uint8_t)SN_UART1->RB;
-                if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
-                {
-                    g_sim_rx_buf[g_sim_rx_len++] = (char)b;
-                    g_sim_rx_buf[g_sim_rx_len] = '\0';
-                }
-            }
-            break;
-
-        default:
-            (void)SN_UART1->LS;
-            break;
+            g_sim_rx_buf[g_sim_rx_len++] = (char)b;
+            g_sim_rx_buf[g_sim_rx_len] = '\0';
         }
-        ii = SN_UART1->II;
     }
 }
 
-/*=============================  KHOI TAO  =================================*/
+/*=============================  KHỞI TẠO  =================================*/
 void SIM4G_Init(void)
 {
     SIM4G_ClearRx();
 
-    /* 1. Dinh tuyen chan P2.2 (UTXD1), P2.3 (URXD1) */
+    /* 1. Định tuyến chân P2.2 (UTXD1), P2.3 (URXD1) ra cọc J7 */
     SN_PFPA->UART1 = (SN_PFPA->UART1 & ~0x0FUL) | PFPA_UART1_P22_P23;
 
-    /* 2. Cap xung nhip cho UART1 */
+    /* 2. Cấp xung nhịp cho khối UART1 */
     SN_SYS1->AHBCLKEN |= UART1_CLKEN_BIT;
 
-    /* 3. Cau hinh Baud 115200 bps (IHRC 12 MHz):
+    /* 3. Cấu hình Baudrate 115200 bps (IHRC 12 MHz):
      *    Oversampling 16, DLL = 4, DLM = 0, MULVAL = 7 (MUL = 8), DIVADDVAL = 5
-     *    Baud = 12M / (16 * 4 * (1 + 5/8)) = 115,384 bps (sai so 0.16%)       */
-    SN_UART1->LC  = 0x03UL | 0x80UL;        /* 8N1 + mo chot DLAB           */
+     *    Baud = 12M / (16 * 4 * (1 + 5/8)) = 115,384 bps (sai số chuẩn 0.16%) */
+    SN_UART1->LC  = 0x03UL | 0x80UL;        /* 8N1 + mở chốt DLAB           */
     SN_UART1->FD  = 0x75UL;                 /* MULVAL[7:4]=7, DIVADDVAL[3:0]=5 */
     SN_UART1->DLM = 0;
     SN_UART1->DLL = 4;
-    SN_UART1->LC  = 0x03UL;                 /* Dong chot DLAB               */
+    SN_UART1->LC  = 0x03UL;                 /* Đóng chốt DLAB               */
 
-    /* 4. FIFO: Reset va kich hoat */
+    /* 4. FIFO: Reset và kích hoạt */
     SN_UART1->FIFOCTRL = 0x01UL | 0x02UL | 0x04UL;
 
-    /* 5. Kich hoat ngat nhan RDA & RLS */
+    /* 5. Kích hoạt ngắt nhận RDA & RLS */
     SN_UART1->IE = 0x01UL | 0x04UL;
     NVIC_EnableIRQ(UART1_IRQn);
 
-    /* 6. Bat bo phat va bo thu UART1 */
+    /* 6. Bật bộ phát và bộ thu UART1 */
     SN_UART1->CTRL = 0x01UL | (1UL << 6) | (1UL << 7);
 
-    /* 7. Giu chan P2.1 (PWRKEY/Reset) o muc HIGH (3.3V) mac dinh, khong lam tat nguon module */
-    GPIO2_MODE |= (1UL << 1);
-    GPIO2_BSET  = (1UL << 1);
-    Delay_ms(500);
-
-    /* 8. Kiem tra phan hoi AT */
+    /* 7. Đồng bộ tốc độ truyền với module A7680C (Auto-baud sync) */
+    DEBUG_UART_SendString("[MODEM] Syncing AT baud (UART1 115200)...\r\n");
     uint8_t at_ok = 0;
-    for (uint8_t retry = 0; retry < 5; retry++) {
-        if (SIM4G_SendCmd("AT\r\n", "OK", 500)) {
+    for (uint8_t i = 0; i < 4; i++) {
+        if (SIM4G_SendCmd("AT\r\n", "OK", 250)) {
             at_ok = 1;
             break;
         }
-        Delay_ms(150);
+        Delay_ms(50);
     }
+
     if (at_ok) {
-        g_sim_ready = 1;
-        SIM4G_SendCmd("ATE0\r\n", "OK", 500);
-        SIM4G_SendCmd("AT+CMEE=1\r\n", "OK", 500);
-        SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 500);
-        SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 500);
-        SIM4G_SendCmd("AT+CMGD=1,4\r\n", "OK", 1000);
+        DEBUG_UART_SendString("[MODEM] AT -> OK\r\n");
+        /* 8. Tắt Echo và cấu hình chế độ SMS Text Mode */
+        SIM4G_SendCmd("ATE0\r\n", "OK", 300);
+        SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 300);
+        SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 300);
+        DEBUG_UART_SendString("[MODEM] AT+CMGF=1 Text Mode Configured\r\n");
+
+        /* 9. Kiểm tra thẻ SIM có sẵn sàng (READY) */
+        if (SIM4G_SendCmd("AT+CPIN?\r\n", "READY", 500)) {
+            DEBUG_UART_SendString("[MODEM] AT+CPIN? -> READY\r\n");
+            g_sim_ready = 1;
+        } else {
+            DEBUG_UART_SendString("[MODEM] AT+CPIN? -> NOT READY / SIM Error\r\n");
+            g_sim_ready = 0;
+        }
     } else {
+        DEBUG_UART_SendString("[MODEM] ERROR: No response to AT\r\n");
         g_sim_ready = 0;
     }
 }
 
 void SIM4G_SendByte(uint8_t b)
 {
-    while ((SN_UART1->LS & (1UL << 5)) == 0); /* Cho dem phat trong (THRE)  */
-    SN_UART1->TH = b;
+    uint32_t timeout = 50000;
+    while (((SN_UART1->LS & (1UL << 5)) == 0) && (--timeout)); /* Chờ đệm phát trống (THRE) */
+    /* FIX FINDING-08: Chỉ ghi TH khi đệm phát thực sự trống */
+    if (SN_UART1->LS & (1UL << 5)) {
+        SN_UART1->TH = b;
+    }
 }
 
 void SIM4G_SendStr(const char *str)
@@ -177,10 +216,10 @@ uint8_t SIM4G_SendCmd(const char *cmd, const char *expected, uint32_t timeout_ms
     t_start = GetTick_ms();
     while ((GetTick_ms() - t_start) < timeout_ms)
     {
-        if (expected && u_strstr((const char *)g_sim_rx_buf, expected)) {
+        if (expected && SIM4G_RxContains(expected)) {
             return 1;
         }
-        if (u_strstr((const char *)g_sim_rx_buf, "ERROR")) {
+        if (SIM4G_RxContains("ERROR")) {
             return 0;
         }
         Delay_ms(10);
@@ -188,36 +227,30 @@ uint8_t SIM4G_SendCmd(const char *cmd, const char *expected, uint32_t timeout_ms
     return 0;
 }
 
-/*=============================  GUI SMS  ==================================*/
+/*=============================  GỬI TIN NHẮN SMS  =========================*/
 static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *message)
 {
     uint32_t t_start;
     char cmd[48];
     uint8_t ctrl_z = 0x1A;
     uint32_t i, p_len;
+    uint8_t got_prompt = 0;
 
-    /* 1. Kiem tra module san sang (gui AT toi da 5 lan de dong bo baud) */
-    uint8_t at_ok = 0;
-    for (uint32_t k = 0; k < 5; k++) {
-        if (SIM4G_SendCmd("AT\r\n", "OK", 500)) {
-            at_ok = 1;
-            break;
+    /* 1. Kiểm tra nhanh kết nối AT với modem */
+    if (!SIM4G_SendCmd("AT\r\n", "OK", 250)) {
+        if (!SIM4G_SendCmd("AT\r\n", "OK", 250)) {
+            DEBUG_UART_SendString("[SMS] MODEM ERROR: No AT response\r\n");
+            g_sim_ready = 0;
+            return 0; /* Modem không phản hồi, dừng ngay để tránh treo hệ thống */
         }
-        Delay_ms(150);
     }
 
-    if (!at_ok) {
-        return 0;
-    }
+    /* Đảm bảo cấu hình Text Mode */
+    SIM4G_SendCmd("ATE0\r\n", "OK", 200);
+    SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 300);
+    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 300);
 
-    /* 2. Cau hinh Text Mode va bo ma GSM */
-    SIM4G_SendCmd("ATE0\r\n", "OK", 500);
-    SIM4G_SendCmd("AT+CPIN?\r\n", "READY", 1500);
-    SIM4G_SendCmd("AT+CREG?\r\n", "OK", 1000);
-    SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 1000);
-    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 1000);
-
-    /* 3. Tao lenh AT+CMGS="<phone_number>"\r */
+    /* 2. Tạo lệnh AT+CMGS="<phone_number>"\r */
     cmd[0] = 'A'; cmd[1] = 'T'; cmd[2] = '+'; cmd[3] = 'C';
     cmd[4] = 'M'; cmd[5] = 'G'; cmd[6] = 'S'; cmd[7] = '=';
     cmd[8] = '\"';
@@ -229,52 +262,101 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     cmd[i++] = '\r';
     cmd[i] = '\0';
 
+    DEBUG_UART_Printf("[SMS] AT+CMGS=\"%s\"\r\n", phone_number);
     SIM4G_ClearRx();
     SIM4G_SendStr(cmd);
 
-    /* 4. Cho dau nhac '>' tu module SIM (toi da 5s) */
+    /* 3. Chờ dấu nhắc '>' từ module SIM (tối đa 4 giây) */
+    DEBUG_UART_SendString("[SMS] WAIT_PROMPT (>)\r\n");
     t_start = GetTick_ms();
-    while ((GetTick_ms() - t_start) < 5000)
+    while ((GetTick_ms() - t_start) < 4000)
     {
-        if (u_strchr((const char *)g_sim_rx_buf, '>')) break;
-        if (u_strstr((const char *)g_sim_rx_buf, "ERROR")) return 0;
+        /* Cho phép người dùng nhấn nút Hủy P2.7 để dừng ngay */
+        if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
+            DEBUG_UART_SendString("[SMS] CANCEL: Aborted by SW6\r\n");
+            SIM4G_SendByte(0x1B); /* Gửi ESC hủy lệnh */
+            return 0;
+        }
+
+        if (SIM4G_RxContainsChar('>')) {
+            got_prompt = 1;
+            break;
+        }
+        if (SIM4G_RxContains("ERROR")) {
+            DEBUG_UART_SendString("[SMS] ERROR: Modem returned ERROR on CMGS\r\n");
+            break;
+        }
         Delay_ms(10);
     }
-    if (!u_strchr((const char *)g_sim_rx_buf, '>')) return 0;
 
-    Delay_ms(200);
+    if (!got_prompt) {
+        DEBUG_UART_SendString("[SMS] TIMEOUT waiting for prompt '>'\r\n");
+        /* FIX FINDING-03: Gửi ESC (0x1B) để hủy prompt nếu modem chưa thoát */
+        SIM4G_SendByte(0x1B);
+        Delay_ms(30);
+        return 0;
+    }
 
-    /* 5. Truyen noi dung tin nhan va ket thuc bang Ctrl+Z (0x1A) */
+    DEBUG_UART_SendString("[SMS] SEND_DATA: Sending message body + Ctrl+Z\r\n");
+    Delay_ms(100);
+
+    /* 4. Truyền nội dung tin nhắn và kết thúc bằng phím Ctrl+Z (0x1A) */
     SIM4G_ClearRx();
     SIM4G_SendStr(message);
     Delay_ms(100);
     SIM4G_SendByte(ctrl_z);
 
-    /* 6. Cho phan hoi +CMGS va OK tu nha mang (toi da 25 giay) */
+    /* 5. Chờ phản hồi +CMGS: từ nhà mạng viễn thông (tối đa 20 giây) */
+    DEBUG_UART_SendString("[SMS] WAIT_RESULT: Waiting for network ACK...\r\n");
     t_start = GetTick_ms();
-    while ((GetTick_ms() - t_start) < 25000)
+    while ((GetTick_ms() - t_start) < 20000)
     {
-        if (u_strstr((const char *)g_sim_rx_buf, "+CMGS") || u_strstr((const char *)g_sim_rx_buf, "OK"))
-        {
-            g_sim_sms_sent = 1;
-            return 1;
-        }
-        if (u_strstr((const char *)g_sim_rx_buf, "ERROR"))
-        {
+        /* Cho phép người dùng bấm nút Hủy P2.7 bất kỳ lúc nào trong khi gửi */
+        if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
+            DEBUG_UART_SendString("[SMS] CANCEL: Aborted by SW6 during send\r\n");
+            SIM4G_SendByte(0x1B); /* Gửi ESC hủy */
             return 0;
         }
-        Delay_ms(50);
+
+        /* FIX FINDING-02: CHỈ chấp nhận +CMGS: làm bằng chứng đã gửi SMS thành công.
+         * Tuyệt đối không kiểm tra "OK" chung chung để chống báo PASS giả! */
+        if (SIM4G_RxContains("+CMGS:"))
+        {
+            DEBUG_UART_SendString("[SMS] SUCCESS (+CMGS received)\r\n");
+            g_sim_sms_sent = 1;
+            g_sim_ready = 1;
+            return 1;
+        }
+
+        /* Bắt lỗi từ mạng hoặc modem */
+        if (SIM4G_RxContains("ERROR"))
+        {
+            DEBUG_UART_SendString("[SMS] ERROR: Network / Modem rejected SMS\r\n");
+            return 0;
+        }
+        Delay_ms(40);
     }
 
+    DEBUG_UART_SendString("[SMS] TIMEOUT: No network response within 20s\r\n");
+    /* Hết thời gian chờ phản hồi mạng -> gửi ESC để giải phóng modem */
+    SIM4G_SendByte(0x1B);
     return 0;
 }
 
 uint8_t SIM4G_SendSMS(const char *phone_number, const char *message)
 {
+    if (!phone_number || !message) return 0;
+
     uint8_t ok = SIM4G_SendSMS_Internal(phone_number, message);
     if (!ok && phone_number[0] == '0')
     {
-        /* Thu lai voi ma quoc te +84 neu can ma vung (+84792394699) */
+        /* Nếu người dùng vừa nhấn nút Hủy P2.7 thì không retry */
+        if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
+            return 0;
+        }
+
+        DEBUG_UART_SendString("[SMS] RETRY: Retrying with international format (+84)...\r\n");
+        /* Thử lại với mã quốc gia +84 nếu đầu số nội địa bị từ chối */
         char intl_num[32];
         intl_num[0] = '+'; intl_num[1] = '8'; intl_num[2] = '4';
         uint32_t i = 3;
@@ -282,7 +364,7 @@ uint8_t SIM4G_SendSMS(const char *phone_number, const char *message)
             intl_num[i++] = phone_number[j];
         }
         intl_num[i] = '\0';
-        Delay_ms(1000);
+        Delay_ms(300);
         ok = SIM4G_SendSMS_Internal(intl_num, message);
     }
     return ok;

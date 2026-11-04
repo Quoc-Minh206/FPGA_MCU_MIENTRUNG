@@ -157,7 +157,7 @@ uint32_t SystemCoreClock;	/*!< System Clock Frequency (Core Clock)*/
  *----------------------------------------------------------------------------*/
 void SystemCoreClockUpdate (void)            /* Get Core Clock Frequency      */
 {
-	uint32_t AHB_prescaler;
+	uint32_t AHB_prescaler = 1;
 
 	switch (SN_SYS0->CLKCFG_b.SYSCLKST)
 	{
