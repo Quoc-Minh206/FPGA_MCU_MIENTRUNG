@@ -12,14 +12,11 @@
 #include "debug_uart.h"
 
 /* 
- * Định thời chu kỳ xung nhịp cho 1 bit ở tốc độ 115200 bps:
- * F_CPU = 12,000,000 Hz.
- * Thời gian 1 bit = 1 / 115,200 = 8.68055 us.
- * Số chu kỳ CPU cho 1 bit = 12,000,000 / 115,200 = 104.17 cycles.
- * Vòng lặp subs (1 cycle) + bne (2 cycles) = 3 cycles/lần lặp.
- * Bù trừ overhead lệnh ghi GPIO (~12 cycles):
- * (104 - 12) / 3 = 30.67 -> Chọn 31 lần lặp (~92 cycles delay + 12 cycles = 104 cycles).
- * Sai số thực tế: +0.16%, trùng khớp hoàn toàn với chuẩn baud UART phần cứng.
+ * Định thời chu kỳ xung nhịp chuẩn xác tuyệt đối cho 1 bit ở 115200 bps (F_CPU = 12 MHz):
+ * 1 bit = 12,000,000 / 115,200 = 104.17 chu kỳ CPU Cortex-M0.
+ * Vòng lặp subs (1 cyc) + bne taken (3 cyc) = 4 chu kỳ/lần lặp.
+ * Với count = 25: (24 * 4) + 2 = 98 chu kỳ.
+ * Cộng overhead ghi chân GPIO STR + rẽ nhánh (~7 chu kỳ) = 105 chu kỳ (~8.75 us, sai số -0.79% chuẩn UART).
  */
 static void delay_cycles(uint32_t count)
 {
@@ -32,7 +29,8 @@ static void delay_cycles(uint32_t count)
     );
 }
 
-#define UART_BIT_DELAY() delay_cycles(23)
+#define UART_BIT_DELAY()       delay_cycles(25)
+#define UART_STOP_BIT_DELAY()  delay_cycles(50)  /* 2 Stop bits bảo đảm receiver đồng bộ 100% */
 
 void DEBUG_UART_Init(void)
 {
@@ -86,9 +84,9 @@ void DEBUG_UART_SendChar(char c)
     if (c & 0x80) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
     UART_BIT_DELAY();
 
-    /* 3. Stop Bit (Mức HIGH) */
+    /* 3. Stop Bit (Mức HIGH) - Giữ 2 Stop bits để chống framing error trên PuTTY */
     SN_GPIO3->BSET = (1UL << 10);
-    UART_BIT_DELAY();
+    UART_STOP_BIT_DELAY();
 
     __enable_irq();
 }

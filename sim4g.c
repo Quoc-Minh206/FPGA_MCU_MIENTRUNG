@@ -239,7 +239,12 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     uint32_t i, p_len;
     uint8_t got_prompt = 0;
 
-    /* 1. Kiểm tra nhanh kết nối AT với modem */
+    /* 1. Giải phóng modem khỏi trạng thái treo (nếu có) bằng mã ESC (0x1B) */
+    SIM4G_SendByte(0x1B);
+    Delay_ms(50);
+    SIM4G_ClearRx();
+
+    /* Kiểm tra nhanh kết nối AT với modem */
     if (!SIM4G_SendCmd("AT\r\n", "OK", 300)) {
         if (!SIM4G_SendCmd("AT\r\n", "OK", 300)) {
             DEBUG_UART_SendString("[SMS] MODEM ERROR: No AT response\r\n");
@@ -311,6 +316,8 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
             DEBUG_UART_SendString("[SMS] SUCCESS (+CMGS/OK received)\r\n");
             g_sim_sms_sent = 1;
             g_sim_ready = 1;
+            Delay_ms(200);
+            SIM4G_ClearRx();
             return 1;
         }
 
@@ -318,6 +325,8 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
         {
             DEBUG_UART_SendString("[SMS] ERROR: Network / Modem returned ERROR\r\n");
             SIM4G_SendByte(0x1B);
+            Delay_ms(100);
+            SIM4G_ClearRx();
             return 0;
         }
         Delay_ms(50);
@@ -325,6 +334,8 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
 
     DEBUG_UART_SendString("[SMS] TIMEOUT: No response from network\r\n");
     SIM4G_SendByte(0x1B);
+    Delay_ms(100);
+    SIM4G_ClearRx();
     return 0;
 }
 

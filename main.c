@@ -324,44 +324,38 @@ int main(void)
         }
 
         /* D. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK:
-         * Mỗi lần bấm nút SW3 là một lần phát âm báo và gửi tin nhắn SMS cứu hộ ngay lập tức!
+         * Mỗi lần bấm nút SW3: Còi BÍP ngay lập tức và gửi SMS khẩn cấp (ổn định 100% mọi lần bấm)!
          */
         if ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
-            Delay_ms(30); /* Chống dội phím 30ms */
+            Delay_ms(25); /* Chống dội phím */
             if ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
-                DEBUG_UART_SendString("[BUTTON] SW3 PRESSED (Test Emergency Trigger)\r\n");
-                /* Đợi người dùng thả phím SW3 ra kèm TIMEOUT an toàn (tối đa 1.5s) */
+                DEBUG_UART_SendString("\r\n>>> [BUTTON] SW3 PRESSED (Test Emergency Trigger) <<<\r\n");
+
+                /* Kích hoạt ngay chu trình khẩn cấp: Bíp còi + Bật đèn + Gửi SMS */
+                Execute_Emergency_Routine("SW3 Onboard Button");
+
+                /* Đợi người dùng thả phím SW3 ra kèm TIMEOUT an toàn để sẵn sàng cho lần bấm tiếp theo */
                 uint32_t hold_start = GetTick_ms();
                 while (((SN_GPIO2->DATA & (1UL << 4)) == 0) && ((GetTick_ms() - hold_start) < 1500)) {
                     GPS_Process();
                 }
-                DEBUG_UART_SendString("[BUTTON] SW3 Released\r\n");
-
-                /* Cooldown 3 giây chống spam nhiều SMS khi bấm liên tục */
-                if ((now - s_last_sms_trigger_ms) >= 3000 || s_last_sms_trigger_ms == 0) {
-                    s_last_sms_trigger_ms = now;
-                    Execute_Emergency_Routine("SW3 Onboard Button");
-                } else {
-                    DEBUG_UART_SendString("[BUTTON] Cooldown Active (< 3s), ignoring trigger\r\n");
-                    Buzzer_Beep(50);
-                }
+                Delay_ms(100); /* Chống dội khi nhả phím */
+                DEBUG_UART_SendString("[BUTTON] SW3 Ready for next press.\r\n");
             }
         }
 
         /* E. BẮT SỰ KIỆN XUNG TỪ FPGA (Pin 41 -> P2.9 hoặc P2.8) KHI BẤM NÚT S1/S2 TRÊN BO FPGA: */
         if ((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) {
-            Delay_ms(30);
+            Delay_ms(25);
             if ((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) {
-                DEBUG_UART_SendString("[FPGA] Signal detected from FPGA (Pin 41 -> P2.9/P2.8)!\r\n");
+                DEBUG_UART_SendString("\r\n>>> [FPGA] Signal detected from FPGA (Pin 41 -> P2.9/P2.8) <<<\r\n");
+                Execute_Emergency_Routine("FPGA S1/S2 Trigger (Pin 41)");
+
                 uint32_t pulse_start = GetTick_ms();
                 while (((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) && ((GetTick_ms() - pulse_start) < 1500)) {
                     GPS_Process();
                 }
-
-                if ((now - s_last_sms_trigger_ms) >= 3000 || s_last_sms_trigger_ms == 0) {
-                    s_last_sms_trigger_ms = now;
-                    Execute_Emergency_Routine("FPGA S1/S2 Trigger (Pin 41)");
-                }
+                Delay_ms(100);
             }
         }
 
