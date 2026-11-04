@@ -100,38 +100,23 @@ void SIM4G_ClearRx(void)
 /*=============================  NGẮT UART1  ===============================*/
 void UART1_IRQHandler(void)
 {
-    uint32_t ii = SN_UART1->II;
-    uint32_t ls;
+    uint32_t ls = SN_UART1->LS;
 
-    while ((ii & 0x01UL) == 0UL)
+    /* Xóa cờ lỗi đường truyền nếu có */
+    if (ls & 0x8EUL) {
+        volatile uint32_t dummy = SN_UART1->RB;
+        (void)dummy;
+    }
+
+    /* Đọc cạn các byte có sẵn trong RX FIFO */
+    while (SN_UART1->LS & 0x01UL)
     {
-        switch ((ii >> 1) & 0x07UL)
+        uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
+        if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
         {
-        case 3: /* RLS */
-            ls = SN_UART1->LS;
-            (void)ls;
-            (void)SN_UART1->RB;
-            break;
-
-        case 2: /* RDA */
-        case 6: /* CTO */
-            while (SN_UART1->LS & 0x01UL)
-            {
-                uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
-                if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
-                {
-                    g_sim_rx_buf[g_sim_rx_len++] = (char)b;
-                    g_sim_rx_buf[g_sim_rx_len] = '\0';
-                }
-            }
-            break;
-
-        default:
-            (void)SN_UART1->LS;
-            (void)SN_UART1->RB;
-            break;
+            g_sim_rx_buf[g_sim_rx_len++] = (char)b;
+            g_sim_rx_buf[g_sim_rx_len] = '\0';
         }
-        ii = SN_UART1->II;
     }
 }
 
@@ -179,15 +164,41 @@ void SIM4G_Init(void)
         SIM4G_SendCmd("ATE0\r\n", "OK", 300);
         SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 300);
         SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 300);
-        DEBUG_UART_SendString("[MODEM] Text mode configured\r\n");
+        DEBUG_UART_SendString("[MODEM] Text mode configured (CMGF=1, CSCS=GSM)\r\n");
 
         if (SIM4G_SendCmd("AT+CPIN?\r\n", "READY", 500)) {
-            DEBUG_UART_SendString("[MODEM] SIM READY\r\n");
+            DEBUG_UART_SendString("[MODEM] SIM Card: READY (CPIN OK)\r\n");
+        } else {
+            DEBUG_UART_SendString("[MODEM] WARN: SIM Card Missing or Locked\r\n");
+        }
+
+        /* Kiểm tra đăng ký mạng viễn thông di động (AT+CREG? trả về ,1 hoặc ,5) */
+        DEBUG_UART_SendString("[MODEM] Checking network registration (AT+CREG?)...\r\n");
+        uint8_t net_registered = 0;
+        for (uint8_t r = 0; r < 8; r++) {
+            SIM4G_ClearRx();
+            SIM4G_SendStr("AT+CREG?\r\n");
+            Delay_ms(300);
+            if (SIM4G_RxContains(",1") || SIM4G_RxContains(",5")) {
+                net_registered = 1;
+                break;
+            }
+            Delay_ms(200);
+        }
+
+        if (net_registered) {
+            DEBUG_UART_SendString("[MODEM] Network: REGISTERED (Home/Roaming OK)\r\n");
             g_sim_ready = 1;
         } else {
-            DEBUG_UART_SendString("[MODEM] SIM Not Ready\r\n");
+            DEBUG_UART_SendString("[MODEM] WARN: Network Searching or No Signal (CREG not 1/5)\r\n");
             g_sim_ready = 0;
         }
+
+        /* Đọc chất lượng sóng di động */
+        SIM4G_ClearRx();
+        SIM4G_SendStr("AT+CSQ\r\n");
+        Delay_ms(200);
+        DEBUG_UART_Printf("[MODEM] Signal Quality: %s\r\n", (const char *)g_sim_rx_buf);
     } else {
         DEBUG_UART_SendString("[MODEM] ERROR: No response to AT\r\n");
         g_sim_ready = 0;
@@ -234,17 +245,34 @@ uint8_t SIM4G_SendCmd(const char *cmd, const char *expected, uint32_t timeout_ms
 static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *message)
 {
     uint32_t t_start;
+    char target_number[32];
     char cmd[48];
     uint8_t ctrl_z = 0x1A;
     uint32_t i, p_len;
     uint8_t got_prompt = 0;
 
-    /* 1. Giải phóng modem khỏi trạng thái treo (nếu có) bằng mã ESC (0x1B) */
+    /* 1. Chuẩn hóa số điện thoại: Tự động đổi đầu 0 sang mã quốc tế +84 */
+    if (phone_number[0] == '0') {
+        target_number[0] = '+'; target_number[1] = '8'; target_number[2] = '4';
+        uint32_t k = 3;
+        for (uint32_t m = 1; phone_number[m] && k < 30; m++) {
+            target_number[k++] = phone_number[m];
+        }
+        target_number[k] = '\0';
+    } else {
+        uint32_t k = 0;
+        for (uint32_t m = 0; phone_number[m] && k < 30; m++) {
+            target_number[k++] = phone_number[m];
+        }
+        target_number[k] = '\0';
+    }
+
+    /* 2. Giải phóng modem khỏi trạng thái treo (nếu có) bằng mã ESC (0x1B) */
     SIM4G_SendByte(0x1B);
     Delay_ms(50);
     SIM4G_ClearRx();
 
-    /* Kiểm tra nhanh kết nối AT với modem */
+    /* Kiểm tra kết nối AT */
     if (!SIM4G_SendCmd("AT\r\n", "OK", 300)) {
         if (!SIM4G_SendCmd("AT\r\n", "OK", 300)) {
             DEBUG_UART_SendString("[SMS] MODEM ERROR: No AT response\r\n");
@@ -257,24 +285,24 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 300);
     SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 300);
 
-    /* 2. Tạo lệnh AT+CMGS="<phone_number>"\r */
+    /* 3. Tạo lệnh AT+CMGS="<target_number>"\r */
     cmd[0] = 'A'; cmd[1] = 'T'; cmd[2] = '+'; cmd[3] = 'C';
     cmd[4] = 'M'; cmd[5] = 'G'; cmd[6] = 'S'; cmd[7] = '=';
     cmd[8] = '\"';
     i = 9;
-    p_len = u_strlen(phone_number);
+    p_len = u_strlen(target_number);
     if (p_len > 24) p_len = 24;
-    for (uint32_t j = 0; j < p_len; j++) cmd[i++] = phone_number[j];
+    for (uint32_t j = 0; j < p_len; j++) cmd[i++] = target_number[j];
     cmd[i++] = '\"';
     cmd[i++] = '\r';
     cmd[i] = '\0';
 
-    DEBUG_UART_Printf("[SMS] AT+CMGS=\"%s\"\r\n", phone_number);
+    DEBUG_UART_Printf("[SMS] Sending AT+CMGS=\"%s\"\r\n", target_number);
     SIM4G_ClearRx();
     SIM4G_SendStr(cmd);
 
-    /* 3. Chờ dấu nhắc '>' từ module SIM (tối đa 5 giây) */
-    DEBUG_UART_SendString("[SMS] WAIT_PROMPT (>)\r\n");
+    /* 4. Chờ dấu nhắc '>' từ module SIM (tối đa 5 giây) */
+    DEBUG_UART_SendString("[SMS] Waiting for prompt '> ' from A7680C...\r\n");
     t_start = GetTick_ms();
     while ((GetTick_ms() - t_start) < 5000)
     {
@@ -283,58 +311,62 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
             break;
         }
         if (SIM4G_RxContains("ERROR")) {
-            DEBUG_UART_SendString("[SMS] ERROR: Modem returned ERROR on CMGS\r\n");
+            DEBUG_UART_Printf("[SMS] ERROR: Modem returned ERROR on CMGS: %s\r\n", (const char *)g_sim_rx_buf);
             break;
         }
         Delay_ms(10);
     }
 
     if (!got_prompt) {
-        DEBUG_UART_SendString("[SMS] TIMEOUT waiting for '>'\r\n");
-        SIM4G_SendByte(0x1B); /* ESC */
+        DEBUG_UART_Printf("[SMS] TIMEOUT waiting for '>'. Last response: %s\r\n", (const char *)g_sim_rx_buf);
+        SIM4G_SendByte(0x1B); /* Gửi ESC để hủy */
         Delay_ms(50);
         return 0;
     }
 
-    DEBUG_UART_SendString("[SMS] SEND_DATA: Sending body + Ctrl+Z\r\n");
-    Delay_ms(100);
+    DEBUG_UART_SendString("[SMS] Prompt '>' received! Sending payload + Ctrl+Z...\r\n");
+    Delay_ms(50);
 
-    /* 4. Truyền nội dung tin nhắn và kết thúc bằng Ctrl+Z */
+    /* 5. Truyền nội dung tin nhắn và kết thúc bằng Ctrl+Z (0x1A) */
     SIM4G_ClearRx();
     SIM4G_SendStr(message);
-    Delay_ms(150);
+    Delay_ms(100);
     SIM4G_SendByte(ctrl_z);
 
-    /* 5. Chờ phản hồi +CMGS hoặc OK từ nhà mạng (tối đa 25 giây) */
-    DEBUG_UART_SendString("[SMS] WAIT_RESULT: Waiting for network ACK...\r\n");
+    /* 6. Chờ phản hồi xác nhận thực tế từ nhà mạng qua +CMGS: (tối đa 25 giây) */
+    DEBUG_UART_SendString("[SMS] Waiting for Network ACK (+CMGS:)...\r\n");
     t_start = GetTick_ms();
     while ((GetTick_ms() - t_start) < 25000)
     {
-        /* CHẤP NHẬN CẢ +CMGS VÀ OK để đảm bảo nhận diện chính xác mạng viễn thông */
-        if (SIM4G_RxContains("+CMGS") || SIM4G_RxContains("OK"))
+        /* CHỈ CHẤP NHẬN "+CMGS:" (có dấu hai chấm) để chống báo PASS giả từ echo AT+CMGS */
+        if (SIM4G_RxContains("+CMGS:"))
         {
-            DEBUG_UART_SendString("[SMS] SUCCESS (+CMGS/OK received)\r\n");
+            Delay_ms(100);
+            DEBUG_UART_Printf("[MODEM RX]: %s\r\n", (const char *)g_sim_rx_buf);
+            DEBUG_UART_SendString("[SMS] SUCCESS! Network confirmed SMS dispatch (+CMGS: received)\r\n");
             g_sim_sms_sent = 1;
             g_sim_ready = 1;
-            Delay_ms(200);
+            Delay_ms(100);
             SIM4G_ClearRx();
             return 1;
         }
 
-        if (SIM4G_RxContains("ERROR"))
+        if (SIM4G_RxContains("ERROR") || SIM4G_RxContains("+CMS ERROR"))
         {
-            DEBUG_UART_SendString("[SMS] ERROR: Network / Modem returned ERROR\r\n");
-            SIM4G_SendByte(0x1B);
             Delay_ms(100);
+            DEBUG_UART_Printf("[MODEM RX ERROR]: %s\r\n", (const char *)g_sim_rx_buf);
+            DEBUG_UART_SendString("[SMS] FAILED: Cellular network or SIM rejected SMS!\r\n");
+            SIM4G_SendByte(0x1B);
+            Delay_ms(50);
             SIM4G_ClearRx();
             return 0;
         }
         Delay_ms(50);
     }
 
-    DEBUG_UART_SendString("[SMS] TIMEOUT: No response from network\r\n");
+    DEBUG_UART_Printf("[SMS] TIMEOUT: No response from network within 25s. RX: %s\r\n", (const char *)g_sim_rx_buf);
     SIM4G_SendByte(0x1B);
-    Delay_ms(100);
+    Delay_ms(50);
     SIM4G_ClearRx();
     return 0;
 }
@@ -342,20 +374,5 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
 uint8_t SIM4G_SendSMS(const char *phone_number, const char *message)
 {
     if (!phone_number || !message) return 0;
-
-    uint8_t ok = SIM4G_SendSMS_Internal(phone_number, message);
-    if (!ok && phone_number[0] == '0')
-    {
-        DEBUG_UART_SendString("[SMS] RETRY: Trying +84 international format...\r\n");
-        char intl_num[32];
-        intl_num[0] = '+'; intl_num[1] = '8'; intl_num[2] = '4';
-        uint32_t i = 3;
-        for (uint32_t j = 1; phone_number[j] && i < 30; j++) {
-            intl_num[i++] = phone_number[j];
-        }
-        intl_num[i] = '\0';
-        Delay_ms(500);
-        ok = SIM4G_SendSMS_Internal(intl_num, message);
-    }
-    return ok;
+    return SIM4G_SendSMS_Internal(phone_number, message);
 }

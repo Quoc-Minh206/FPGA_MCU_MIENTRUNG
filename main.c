@@ -45,8 +45,13 @@ void SysTick_Handler(void)
     }
 
     /* Tạo xung âm thanh 1000 Hz cho còi thạch anh onboard PZ1 (P3.0) */
+    /* CHỈ DÙNG BSET/BCLR - TUYỆT ĐỐI KHÔNG DÙNG ^= TRÊN DATA ĐỂ TRÁNH NHIỄU CHÂN UART P3.10 */
     if (g_buzzer_enabled) {
-        SN_GPIO3->DATA ^= (1UL << 0);
+        if (SN_GPIO3->DATA & (1UL << 0)) {
+            SN_GPIO3->BCLR = (1UL << 0);
+        } else {
+            SN_GPIO3->BSET = (1UL << 0);
+        }
     } else {
         SN_GPIO3->BCLR = (1UL << 0);
     }
@@ -134,7 +139,7 @@ static uint8_t Dispatch_Emergency_SMS(void)
     char sms_buffer[160];
     uint32_t i = 0, j = 0;
 
-    const char *prefix = "CANH BAO TAI NAN XE MAY!\n";
+    const char *prefix = "CANH BAO TAI NAN XE MAY!\r\n";
     while (prefix[i] != '\0' && j < sizeof(sms_buffer) - 1) {
         sms_buffer[j++] = prefix[i++];
     }
@@ -162,7 +167,7 @@ static uint8_t Dispatch_Emergency_SMS(void)
             sms_buffer[j++] = g_gps_maps_link[i++];
         }
     } else {
-        const char *no_fix = "GPS: CHUA KHOA VE TINH (Fix=0)\n(Vui long de anten ra gan cua so hoac ngoai troi)";
+        const char *no_fix = "GPS: CHUA KHOA VE TINH (Fix=0)\r\n(Kiem tra anten GPS dat ngoai troi)";
         i = 0;
         while (no_fix[i] != '\0' && j < sizeof(sms_buffer) - 1) {
             sms_buffer[j++] = no_fix[i++];
@@ -218,6 +223,8 @@ static void Execute_Emergency_Routine(const char *source_desc)
         /* Bíp 1 tiếng dài 600ms cảnh báo lỗi SIM hoặc chưa bắt sóng */
         Buzzer_Beep(600);
     }
+    BUZZER_OFF();
+    ALERT_LED_OFF();
 }
 
 /*=============================  HÀM MAIN  =================================*/

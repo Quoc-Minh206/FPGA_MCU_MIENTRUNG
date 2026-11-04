@@ -29,11 +29,14 @@ static void delay_cycles(uint32_t count)
     );
 }
 
-#define UART_BIT_DELAY()       delay_cycles(25)
-#define UART_STOP_BIT_DELAY()  delay_cycles(50)  /* 2 Stop bits bảo đảm receiver đồng bộ 100% */
+#define UART_BIT_DELAY()       delay_cycles(23)
+#define UART_STOP_BIT_DELAY()  delay_cycles(35)  /* Stop bit chuẩn đảm bảo receiver không bị trễ */
 
 void DEBUG_UART_Init(void)
 {
+    /* Đảm bảo cấp xung AHB cho GPIO Port 3 */
+    SN_SYS1->AHBCLKEN |= (1UL << 3);
+
     /* 1. Cấu hình P3.10 làm Output Push-Pull (TX) */
     SN_GPIO3->MODE |= (1UL << 10);
 
