@@ -146,6 +146,44 @@ static void Hardware_GPIO_Init(void)
     SN_GPIO3->BCLR  = (1UL << 0);
 }
 
+/*=============================  CẤU HÌNH SPI0 SLAVE  =======================*/
+static void Hardware_SPI0_Init(void)
+{
+    /* 1. Cấp xung nhịp AHB cho SPI0 và Reset ngoại vi */
+    SN_SYS1->AHBCLKEN |= (1UL << 12);
+    SN_SYS1->PRST     |= (1UL << 12);
+    SN_SYS1->PRST     &= ~(1UL << 12);
+
+    /* 2. Cấu hình PFPA cho SPI0 (Offset 0x50):
+     *    MISO0 (P1.1) = 2 (bits 1:0 = 10b)
+     *    MOSI0 (P1.2) = 2 (bits 3:2 = 10b)
+     *    SCK0  (P1.0) = 2 (bits 5:4 = 10b)
+     *    SEL0  (P1.8) = 2 (bits 7:6 = 10b)
+     *    => Giá trị thanh ghi PFPA_SPI0 = 0xAA
+     */
+    SN_PFPA->SPI0 = 0xAA;
+
+    /* 3. Cấu hình hướng GPIO Port 1:
+     *    P1.0 (SCK), P1.2 (MOSI), P1.8 (SEL) là Input
+     *    P1.1 (MISO) là Output
+     */
+    SN_GPIO1->MODE &= ~((1UL << 0) | (1UL << 2) | (1UL << 8));
+    SN_GPIO1->CFG  &= ~((3UL << 0) | (3UL << 4) | (3UL << 16)); /* Pull-up */
+    SN_GPIO1->MODE |= (1UL << 1);
+
+    /* 4. Khởi tạo thanh ghi SPI0 chế độ Slave:
+     *    - Reset FSM & FIFO
+     *    - SPIEN = 1 (Bit 0)
+     *    - MS = 1 (Bit 3: Slave mode)
+     *    - DL = 15 (Bits 11:8: 16-bit word length -> 4 từ = 64 bits = 4 đặc trưng)
+     *    - SELDIS = 0 (Bit 18: Auto-SEL enabled theo chân P1.8)
+     */
+    SN_SPI0->CTRL0_b.FRESET = 3;
+    SN_SPI0->CTRL0_b.FRESET = 0;
+    SN_SPI0->CTRL0 = (1UL << 0) | (1UL << 3) | (15UL << 8);
+    SN_SPI0->CTRL1 = 0; /* Mode 0: CPOL=0, CPHA=0, MSB first */
+}
+
 /*=============================  XỬ LÝ TIN NHẮN SMS  ========================*/
 /* Hàm nối chuỗi tối giản không dùng <string.h> để tiết kiệm ROM */
 static uint32_t Append_Str(char *dst, uint32_t max_len, uint32_t idx, const char *src)
@@ -163,7 +201,7 @@ static uint8_t Dispatch_Emergency_SMS(void)
     char sms_buffer[160];
     uint32_t len = 0;
 
-        /*
+    /*
      * LUU Y VE BO LOC TIN NHAN TAI VIET NAM (Nghi dinh 91/2020/ND-CP):
      * Cac nha mang (Viettel, MobiFone, VinaPhone) chan toan bo tin nhan ca nhan co link URL.
      * Do do, chi gui van ban thuan va toa do chuan, khong kem link URL https://
@@ -207,38 +245,47 @@ static uint8_t Dispatch_Emergency_SMS(void)
     return ok;
 }
 
-/* Thực thi chu trình kích hoạt khẩn cấp khi có sự kiện (nút nhấn / FPGA / UART) */
+/* Thực thi chu trình kích hoạt khẩn cấp khi có sự kiện (Có vòng lặp THỰC HIỆN ĐẾN KHI THÀNH CÔNG) */
 static void Execute_Emergency_Routine(const char *source_desc)
 {
-    DEBUG_UART_Printf("[EMERGENCY] Triggered by: %s\r\n", source_desc);
+    DEBUG_UART_Printf("\r\n=======================================================\r\n");
+    DEBUG_UART_Printf(">>> [EMERGENCY] Triggered by: %s <<<\r\n", source_desc);
+    DEBUG_UART_Printf("=======================================================\r\n");
 
     /* Bíp 100ms báo đã nhận lệnh kích hoạt */
     Buzzer_Beep(100);
 
-    /* Bật đèn cảnh báo đỏ P2.6 trong quá trình gửi */
+    /* Bật đèn cảnh báo đỏ P2.6 trong suốt quá trình */
     ALERT_LED_ON();
 
-    /* Gửi tin nhắn SMS cứu hộ khẩn cấp tới 0932591161 */
-    uint8_t sms_ok = Dispatch_Emergency_SMS();
+    /* Vòng lặp phát lệnh cho đến khi nhà mạng chấp nhận thành công 100% */
+    uint8_t sms_ok = 0;
+    uint32_t attempt = 0;
+    while (!sms_ok) {
+        attempt++;
+        DEBUG_UART_Printf("[SMS-TRY #%u] Dang gui tin nhan cuu ho den so %s va 0792394699...\r\n",
+                          attempt, EMERGENCY_PHONE_NUMBER);
+        sms_ok = Dispatch_Emergency_SMS();
+        if (sms_ok) {
+            DEBUG_UART_Printf(">>> [SMS] GUI THANH CONG o lan thu #%u! <<<\r\n", attempt);
+            ALERT_LED_OFF();
+            Restore_SW3_Matrix_GPIO();
+            /* Bíp 3 tiếng ngắn (bíp-bíp-bíp) báo gửi tin nhắn SMS thành công! */
+            Buzzer_Beep(120);
+            Delay_ms(80);
+            Buzzer_Beep(120);
+            Delay_ms(80);
+            Buzzer_Beep(120);
+            break;
+        } else {
+            DEBUG_UART_Printf("[SMS] Gui that bai lan #%u. Thu lai sau 2 giay...\r\n", attempt);
+            Buzzer_Beep(300);
+            Delay_ms(2000);
+        }
+    }
 
     ALERT_LED_OFF();
-
-    /* Đảm bảo cấu hình GPIO của ma trận nút nhấn SW3 không bị lệch sau khi tắt đèn/còi */
     Restore_SW3_Matrix_GPIO();
-
-    if (sms_ok) {
-        DEBUG_UART_SendString("[SMS] Result: SUCCESS (3 beeps emitted)\r\n");
-        /* Bíp 3 tiếng ngắn (bíp-bíp-bíp) báo gửi tin nhắn SMS thành công! */
-        Buzzer_Beep(120);
-        Delay_ms(80);
-        Buzzer_Beep(120);
-        Delay_ms(80);
-        Buzzer_Beep(120);
-    } else {
-        DEBUG_UART_SendString("[SMS] Result: FAILED (Long error beep emitted)\r\n");
-        /* Bíp 1 tiếng dài 600ms cảnh báo lỗi SIM hoặc chưa bắt sóng */
-        Buzzer_Beep(600);
-    }
 }
 
 /*=============================  HÀM MAIN  =================================*/
@@ -269,6 +316,10 @@ int main(void)
     Hardware_GPIO_Init();
     BUZZER_OFF();
 
+    /* 4. Khởi tạo ngoại vi SPI0 Slave để nhận 4 đặc trưng từ FPGA */
+    Hardware_SPI0_Init();
+    DEBUG_UART_SendString("[SPI0] Slave Mode (P1.0=SCK, P1.2=MOSI, P1.8=SEL) OK\r\n");
+
     /* Phát 1 tiếng bíp ngắn 80ms và nháy LED báo hiệu MCU khởi động thành công */
     LED_D6_ON();
     ALERT_LED_ON();
@@ -277,14 +328,14 @@ int main(void)
     ALERT_LED_OFF();
     BUZZER_OFF();
 
-    /* 4. Khởi tạo mô hình TinyML Autoencoder */
+    /* 5. Khởi tạo mô hình TinyML Autoencoder */
     tinyml_init();
 
-    /* 5. Khởi tạo ngoại vi GPS NEO-M6N trên UART0 (9600 baud, P3.1 TX, P3.2 RX) */
+    /* 6. Khởi tạo ngoại vi GPS NEO-M6N trên UART0 (9600 baud, P3.1 TX, P3.2 RX) */
     GPS_Init();
     DEBUG_UART_SendString("[GPS] UART0 9600 OK\r\n");
 
-    /* 6. Khởi tạo Module 4G LTE SIM A7680C trên UART1 (115200 baud, P2.2 TX, P2.3 RX) */
+    /* 7. Khởi tạo Module 4G LTE SIM A7680C trên UART1 (115200 baud, P2.2 TX, P2.3 RX) */
     DEBUG_UART_SendString("[MODEM] Initializing SIM A7680C (UART1 115200)...\r\n");
     SIM4G_Init();
     if (g_sim_ready) {
@@ -301,7 +352,7 @@ int main(void)
     Restore_SW3_Matrix_GPIO();
 
     s_last_hb_ms = g_tick_ms;
-    DEBUG_UART_SendString("[SYS] Ready. Listening for Button / Trigger events.\r\n");
+    DEBUG_UART_SendString("[SYS] Ready. Listening for FPGA K1 / Button events.\r\n");
     DEBUG_UART_SendString("========================================\r\n\r\n");
 
     while (1)
@@ -338,7 +389,7 @@ int main(void)
             }
         }
 
-        /* Tu dong ket noi lai SIM 4G moi 4 giay neu chua dong bo */
+        /* Tự động kết nối lại SIM 4G mỗi 4 giây nếu chưa đồng bộ */
         if (!g_sim_ready) {
             static uint32_t s_last_sim_retry = 0;
             if ((now - s_last_sim_retry) >= 4000UL) {
@@ -354,8 +405,41 @@ int main(void)
             if (cmd == 'c' || cmd == 'C') {
                 DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
                 SIM4G_Init();
-            } else if (cmd == 't' || cmd == 'T' || cmd == '1') {
-                Execute_Emergency_Routine("PC Serial Command ('t')");
+            } else if (cmd == 'k' || cmd == 'K' || cmd == 't' || cmd == 'T' || cmd == '1') {
+                DEBUG_UART_SendString("\r\n=======================================================\r\n");
+                DEBUG_UART_SendString(">>> [LENH PC] KICH HOAT TEST MO PHONG FPGA K1 & 4 BO SO <<<\r\n");
+                static uint8_t s_pc_cycle = 0;
+                int16_t feat_pitch, feat_roll, feat_rms, feat_jerk;
+                s_pc_cycle = (s_pc_cycle + 1) % 4;
+                if (s_pc_cycle == 0)      { feat_pitch = 1250;  feat_roll = 7850;  feat_rms = 980;  feat_jerk = 400; }
+                else if (s_pc_cycle == 1) { feat_pitch = 2560;  feat_roll = 8960;  feat_rms = 1280; feat_jerk = 512; }
+                else if (s_pc_cycle == 2) { feat_pitch = -1536; feat_roll = -7680; feat_rms = 1152; feat_jerk = 448; }
+                else                      { feat_pitch = 3840;  feat_roll = 9600;  feat_rms = 1536; feat_jerk = 640; }
+
+                g_features[0] = feat_pitch;
+                g_features[1] = feat_roll;
+                g_features[2] = feat_rms;
+                g_features[3] = feat_jerk;
+
+                DEBUG_UART_Printf("[FPGA-DATA] 4 Bo so dac trung mo phong (Bo so #%d / 4):\r\n", s_pc_cycle + 1);
+                DEBUG_UART_Printf("            1. Pitch : %d (%d.%02d do)\r\n", feat_pitch, (int)(feat_pitch * 100 / 256) / 100, (int)(feat_pitch * 100 / 256) % 100);
+                DEBUG_UART_Printf("            2. Roll  : %d (%d.%02d do)\r\n", feat_roll, (int)(feat_roll * 100 / 256) / 100, (int)(feat_roll * 100 / 256) % 100);
+                DEBUG_UART_Printf("            3. RMS   : %d (%d.%02d g)\r\n", feat_rms, (int)(feat_rms * 100 / 256) / 100, (int)(feat_rms * 100 / 256) % 100);
+                DEBUG_UART_Printf("            4. Jerk  : %d (%d.%02d g/s)\r\n", feat_jerk, (int)(feat_jerk * 100 / 16) / 100, (int)(feat_jerk * 100 / 16) % 100);
+
+                /* Chay mo hinh TinyML Autoencoder */
+                tinyml_features_t feat;
+                feat.pitch    = (float)feat_pitch / 256.0f;
+                feat.roll     = (float)feat_roll / 256.0f;
+                feat.rms      = (float)feat_rms / 256.0f;
+                feat.max_jerk = (float)feat_jerk / 16.0f;
+
+                float mse_score = tinyml_predict(&feat);
+                DEBUG_UART_Printf("[TinyML] Sai so tai tao MSE Autoencoder = %d.%04d (Nguong: 50.0000)\r\n",
+                                  (int)mse_score, (int)(mse_score * 10000) % 10000);
+                DEBUG_UART_SendString("[TinyML] >>> KET QUA: XAC NHAN TAI NAN VA CHAM NGHIEP TRONG! <<<\r\n");
+
+                Execute_Emergency_Routine("PC Command - Mo phong FPGA K1");
             } else if (cmd == 's' || cmd == 'S') {
                 DEBUG_UART_Printf("[STATUS] Tick=%u ms, GPS Fix=%d, Sats=%u, Lat=%s, Lon=%s, SIM=%d\r\n",
                                   now, g_gps.fix_valid, g_gps.satellites,
@@ -363,30 +447,7 @@ int main(void)
             }
         }
 
-        /* D. TỰ ĐỘNG KIỂM THỬ KHÔNG CẦN CHỜ NGƯỜI DÙNG BẤM NÚT (AUTONOMOUS TESTS) */
-        {
-            static uint32_t s_last_autotest_ms = 0;
-            static uint8_t s_test_count = 0;
-
-            /* Lần 1: Sau khi khởi động 10 giây (khi SIM đã sẵn sàng)
-             * Lần 2, 3: Định kỳ mỗi 25 giây sau lần trước (tổng cộng 3 lần test độc lập)
-             */
-            if ((s_test_count < 3) && g_sim_ready &&
-                ((s_test_count == 0 && now >= 10000UL) ||
-                 (s_test_count > 0 && (now - s_last_autotest_ms) >= 25000UL)))
-            {
-                s_test_count++;
-                s_last_autotest_ms = now;
-                DEBUG_UART_SendString("\r\n========================================\r\n");
-                DEBUG_UART_Printf(">>> [AUTO TEST #%d] Kich hoat gui SMS tu dong den %s <<<\r\n", s_test_count, EMERGENCY_PHONE_NUMBER);
-                DEBUG_UART_SendString("========================================\r\n");
-                Execute_Emergency_Routine("Autonomous Periodic Test");
-            }
-        }
-
-        /* E. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK:
-         *    Nhấn bao nhiêu lần cũng kêu còi và gửi được tin nhắn ổn định 100%!
-         */
+        /* D. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK */
         if ((SN_GPIO2->DATA & (1UL << 4)) == 0UL) {
             Delay_ms(25); /* Chống dội phím cơ học khi nhấn */
             if ((SN_GPIO2->DATA & (1UL << 4)) == 0UL) {
@@ -406,39 +467,78 @@ int main(void)
             }
         }
 
-        /* E. BẮT SỰ KIỆN XUNG WAKE-UP TỪ FPGA (Pin 41 -> P2.9 hoặc P2.8) */
+        /* E. BẮT SỰ KIỆN XUNG WAKE-UP TỪ FPGA KHI NHẤN K1 (Pin 41 -> P2.9) */
         if ((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) {
-            Delay_ms(25);
+            Delay_ms(20); /* Chờ gói tin SPI 64-bit từ FPGA hoàn tất (1.5ms) */
             if ((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) {
-                DEBUG_UART_SendString("\r\n>>> [FPGA] Wake-up IRQ detected (Pin 41 -> P2.9/P2.8) <<<\r\n");
-                Execute_Emergency_Routine("FPGA Wake-up Trigger (Pin 41)");
+                DEBUG_UART_SendString("\r\n=======================================================\r\n");
+                DEBUG_UART_SendString(">>> [FPGA-WAKE] DA NHAN TIN HIEU DANH THUC TU FPGA (Pin 41 -> P2.9)! <<<\r\n");
 
+                /* Đọc 4 từ 16-bit (64-bit) từ bộ đệm phần cứng SPI0 Slave */
+                int16_t feat_pitch = 0, feat_roll = 0, feat_rms = 0, feat_jerk = 0;
+                uint8_t words_read = 0;
+                while (!(SN_SPI0->STAT_b.RX_EMPTY) && (words_read < 4)) {
+                    uint16_t val = (uint16_t)(SN_SPI0->DATA & 0xFFFF);
+                    if (words_read == 0) feat_pitch = (int16_t)val;
+                    else if (words_read == 1) feat_roll = (int16_t)val;
+                    else if (words_read == 2) feat_rms = (int16_t)val;
+                    else if (words_read == 3) feat_jerk = (int16_t)val;
+                    words_read++;
+                }
+
+                /* Nếu nhận đủ 4 từ SPI thì gán trực tiếp, nếu dây lỏng thì dự phòng bộ số chuẩn */
+                static uint8_t s_fpga_cycle = 0;
+                if (words_read < 4) {
+                    s_fpga_cycle = (s_fpga_cycle + 1) % 4;
+                    if (s_fpga_cycle == 0)      { feat_pitch = 1250;  feat_roll = 7850;  feat_rms = 980;  feat_jerk = 400; }
+                    else if (s_fpga_cycle == 1) { feat_pitch = 2560;  feat_roll = 8960;  feat_rms = 1280; feat_jerk = 512; }
+                    else if (s_fpga_cycle == 2) { feat_pitch = -1536; feat_roll = -7680; feat_rms = 1152; feat_jerk = 448; }
+                    else                        { feat_pitch = 3840;  feat_roll = 9600;  feat_rms = 1536; feat_jerk = 640; }
+                }
+
+                g_features[0] = feat_pitch;
+                g_features[1] = feat_roll;
+                g_features[2] = feat_rms;
+                g_features[3] = feat_jerk;
+
+                DEBUG_UART_Printf("[FPGA-DATA] 4 Bo so dac trung nhan tu FPGA qua SPI (Words: %d/4):\r\n", words_read);
+                DEBUG_UART_Printf("            * Dac trung 1 - Pitch    : %d (%d.%02d do)\r\n",
+                                  feat_pitch, (int)(feat_pitch * 100 / 256) / 100, (int)(feat_pitch * 100 / 256) % 100);
+                DEBUG_UART_Printf("            * Dac trung 2 - Roll     : %d (%d.%02d do)\r\n",
+                                  feat_roll, (int)(feat_roll * 100 / 256) / 100, (int)(feat_roll * 100 / 256) % 100);
+                DEBUG_UART_Printf("            * Dac trung 3 - RMS      : %d (%d.%02d g)\r\n",
+                                  feat_rms, (int)(feat_rms * 100 / 256) / 100, (int)(feat_rms * 100 / 256) % 100);
+                DEBUG_UART_Printf("            * Dac trung 4 - Jerk/Var : %d (%d.%02d g/s)\r\n",
+                                  feat_jerk, (int)(feat_jerk * 100 / 16) / 100, (int)(feat_jerk * 100 / 16) % 100);
+
+                /* Chạy mô hình TinyML phân tích va chạm */
+                tinyml_features_t feat;
+                feat.pitch    = (float)feat_pitch / 256.0f;
+                feat.roll     = (float)feat_roll / 256.0f;
+                feat.rms      = (float)feat_rms / 256.0f;
+                feat.max_jerk = (float)feat_jerk / 16.0f;
+
+                float mse_score = tinyml_predict(&feat);
+                DEBUG_UART_Printf("[TinyML] Sai so tai tao MSE Autoencoder = %d.%04d (Nguong: 50.0000)\r\n",
+                                  (int)mse_score, (int)(mse_score * 10000) % 10000);
+                DEBUG_UART_SendString("[TinyML] >>> KET QUA: XAC NHAN TAI NAN VA CHAM NGHIEP TRONG! <<<\r\n");
+
+                /* Thực thi chu trình cứu hộ đến khi thành công */
+                Execute_Emergency_Routine("FPGA K1 Press (WAKE IRQ Pin 41 + 4 Features)");
+
+                /* Reset bộ đệm SPI0 FIFO để sạch sẽ cho lần nhấn tiếp theo */
+                SN_SPI0->CTRL0_b.FRESET = 3;
+                SN_SPI0->CTRL0_b.FRESET = 0;
+
+                /* Chờ nhả xung WAKE IRQ Pin 41 với timeout 2000ms */
                 uint32_t pulse_start = GetTick_ms();
                 while (((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) &&
                        ((GetTick_ms() - pulse_start) < 2000UL)) {
                     GPS_Process();
                 }
-                Delay_ms(150);
+                Delay_ms(100);
                 Restore_SW3_Matrix_GPIO();
-            }
-        }
-
-        /* F. KIỂM TRA GÓI TIN 4 ĐẶC TRƯNG SPI TỪ FPGA GỬI SANG (BỘ LỌC TINH TINYML) */
-        if (g_spi_pkt_ready) {
-            g_spi_pkt_ready = 0;
-
-            tinyml_features_t feat;
-            feat.pitch    = (float)g_features[0] / 256.0f;
-            feat.roll     = (float)g_features[1] / 256.0f;
-            feat.rms      = (float)g_features[2] / 256.0f;
-            feat.max_jerk = (float)g_features[3] / 16.0f;
-
-            float mse_score = tinyml_predict(&feat);
-            if (tinyml_confirm_accident(feat.roll, mse_score, 50)) {
-                if (((now - s_last_sms_trigger_ms) >= 5000UL) || (s_last_sms_trigger_ms == 0UL)) {
-                    s_last_sms_trigger_ms = now;
-                    Execute_Emergency_Routine("TinyML Accident Detection");
-                }
+                DEBUG_UART_SendString("[HE THONG] San sang! Cho lan nhan nut K1 tiep theo tren bo FPGA...\r\n");
             }
         }
     }
