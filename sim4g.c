@@ -305,6 +305,14 @@ void SIM4G_Init(void)
     SIM4G_ExecAndPrint("MODEM-SMSC", "AT+CSCA?\r\n", 500);
     SIM4G_ExecAndPrint("MODEM-CREG", "AT+CREG?\r\n", 300);
     SIM4G_ExecAndPrint("MODEM-CEREG","AT+CEREG?\r\n", 300);
+    SIM4G_ExecAndPrint("MODEM-CGSMS","AT+CGSMS?\r\n", 300);
+    SIM4G_ExecAndPrint("MODEM-CSMS", "AT+CSMS?\r\n", 300);
+    /* Gui tin nhan mien phi "TK" den 900 de kiem tra so du va chieu gui */
+    DEBUG_UART_SendString("[TEST-900] Dang gui TK den 900 de kiem tra so du...\r\n");
+    SIM4G_SendSMS("900", "TK");
+    DEBUG_UART_SendString("[TEST-900] Cho 6s de nhan tin nhan phan hoi tu 900...\r\n");
+    Delay_ms(6000);
+    SIM4G_ExecAndPrint("MODEM-INBOX-900","AT+CMGL=\"ALL\"\r\n", 1500);
     SIM4G_ExecAndPrint("MODEM-INBOX","AT+CMGL=\"ALL\"\r\n", 800);
     SIM4G_ExecAndPrint("MODEM-CNUM", "AT+CNUM\r\n", 400);
     SIM4G_ExecAndPrint("MODEM-MSG1", "AT+CMGR=1\r\n", 600);
