@@ -21,6 +21,7 @@ volatile uint32_t g_tick_ms = 0;
 volatile int16_t  g_features[4] = {0, 0, 0, 0}; /* Pitch, Roll, RMS, Variance */
 volatile uint8_t  g_spi_pkt_ready = 0;
 volatile uint8_t  g_buzzer_enabled = 0;
+volatile uint8_t  g_periph_init_done = 0;
 static volatile uint8_t s_tick_div = 0;
 
 static uint32_t s_last_hb_ms = 0;
@@ -67,8 +68,10 @@ void Delay_ms(uint32_t ms)
 {
     uint32_t start = g_tick_ms;
     while ((g_tick_ms - start) < ms) {
-        GPS_Process();
-        SIM4G_Poll();
+        if (g_periph_init_done) {
+            GPS_Process();
+            SIM4G_Poll();
+        }
     }
 }
 
@@ -78,8 +81,10 @@ void Buzzer_Beep(uint32_t duration_ms)
     BUZZER_ON();
     uint32_t start = g_tick_ms;
     while ((g_tick_ms - start) < duration_ms) {
-        GPS_Process();
-        SIM4G_Poll();
+        if (g_periph_init_done) {
+            GPS_Process();
+            SIM4G_Poll();
+        }
     }
     BUZZER_OFF();
 }
@@ -244,9 +249,14 @@ int main(void)
     WDT_CFG = 0x5AFA0000UL;
     SYS0_LVDCTRL = 0UL;
 
+    /* Cấp xung nhịp AHB cho UART0 và UART1 trước để bảo vệ chống HardFault */
+    SN_SYS1->AHBCLKEN |= (1UL << 16) | (1UL << 17);
+
     /* 1. Khởi tạo UART Debug trên P3.10 TX, P3.11 RX (115200 8N1) */
     DEBUG_UART_Init();
-                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
+    DEBUG_UART_SendString("\r\n========================================\r\n");
+    DEBUG_UART_SendString("   HE THONG PHAT HIEN TAI NAN XE MAY\r\n");
+    DEBUG_UART_SendString("   MCU: SONiX SN32F407 | FPGA: GW1NSR-4C\r\n");
     DEBUG_UART_SendString("   So dien thoai cuu ho: 0792398699\r\n");
     DEBUG_UART_SendString("========================================\r\n");
 
@@ -276,8 +286,13 @@ int main(void)
     DEBUG_UART_SendString("[MODEM] Initializing SIM A7680C (UART1 115200)...\r\n");
     SIM4G_Init();
     if (g_sim_ready) {
-                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
+        DEBUG_UART_SendString("[MODEM] Ready (CPIN OK)\r\n");
+    } else {
+        DEBUG_UART_SendString("[MODEM] WARN: Not Ready or SIM Missing\r\n");
     }
+
+    /* Đánh dấu ngoại vi đã sẵn sàng để Delay_ms và Buzzer_Beep có thể Poll */
+    g_periph_init_done = 1;
 
     BUZZER_OFF();
     ALERT_LED_OFF();
@@ -343,7 +358,9 @@ int main(void)
 
             if (!s_auto1_done && (now >= 18000UL)) {
                 s_auto1_done = 1;
-                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
+                DEBUG_UART_SendString("\r\n========================================\r\n");
+                DEBUG_UART_SendString(">>> [AUTO TEST #1] Emergency Routine at 18s <<<\r\n");
+                DEBUG_UART_SendString("========================================\r\n");
                 Execute_Emergency_Routine("Autonomous Boot Test #1");
             }
 
