@@ -36,7 +36,7 @@ SIM_Status_t SIM_Init(void);
 
 /**
  * @brief  Gửi tin nhắn văn bản SMS tới số điện thoại chỉ định
- * @param  phone_number: Số điện thoại người nhận (Ví dụ: "+84792398699" hoặc "0792398699")
+ * @param  phone_number: Số điện thoại người nhận (Ví dụ: "+84792394699" hoặc "0792394699")
  * @param  message:      Nội dung tin nhắn văn bản (chuẩn ASCII không dấu)
  * @return SIM_Status_t: SIM_OK nếu gửi thành công và nhận ACK từ mạng, ngược lại trả về mã lỗi.
  */

@@ -320,6 +320,16 @@ void SIM4G_Init(void)
     SIM4G_ExecAndPrint("MODEM-MSG1", "AT+CMGR=1\r\n", 600);
     SIM4G_ExecAndPrint("MODEM-MSG2", "AT+CMGR=2\r\n", 600);
     SIM4G_ExecAndPrint("MODEM-BAL",  "AT+CUSD=1,\"*101#\",15\r\n", 1500);
+    /* Thu tra cuu so thue bao bang *0# */
+    SIM4G_ExecAndPrint("MODEM-CHECK-NUM", "AT+CUSD=1,\"*0#\",15\r\n", 3000);
+    /* THU GOI DIEN TRUC TIEP DEN 0792394699 TRONG 12 GIAY */
+    DEBUG_UART_SendString("\r\n========================================\r\n");
+    DEBUG_UART_SendString(">>> [CALL TEST] Dang goi dien den 0792394699 de chuong reo... <<<\r\n");
+    DEBUG_UART_SendString("========================================\r\n");
+    SIM4G_ExecAndPrint("CALL-DIAL", "ATD0792394699;\r\n", 6000);
+    Delay_ms(10000);
+    DEBUG_UART_SendString(">>> [CALL TEST] Gac may (ATH)... <<<\r\n");
+    SIM4G_SendCmd("ATH\r\n", "OK", 1000);
 
     DEBUG_UART_SendString("[MODEM] Dang kiem tra dang ky mang...\r\n");
 

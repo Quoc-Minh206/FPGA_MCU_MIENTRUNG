@@ -1,7 +1,6 @@
 import serial
 import subprocess
 import time
-import sys
 
 def main():
     print("=== 1. Opening COM8 @ 115200 ===")
@@ -23,10 +22,9 @@ def main():
         if "Load" in line or "Verify OK" in line or "finished" in line or "Complete" in line or "Error" in line:
             print("  [FLASH]", line)
 
-    print("=== 3. Monitoring COM8 Live Serial Output for 50s ===")
+    print("=== 3. Monitoring COM8 Live Serial Output for 65s (Call + SMS Test) ===")
     t0 = time.time()
-    last_print = time.time()
-    while time.time() - t0 < 50:
+    while time.time() - t0 < 65:
         line = ser.readline()
         if line:
             try:
