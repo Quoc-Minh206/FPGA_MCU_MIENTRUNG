@@ -29,7 +29,7 @@ static void delay_cycles(uint32_t count)
     );
 }
 
-#define UART_BIT_DELAY()       delay_cycles(25)
+#define UART_BIT_DELAY()       delay_cycles(25)  /* Chuẩn 104-106 chu kỳ = 115200 baud @ 12MHz (Khớp 100% PuTTY 115200 8N1) */
 #define UART_STOP_BIT_DELAY()  delay_cycles(50)  /* 2 Stop bits bảo đảm receiver đồng bộ 100% */
 
 void DEBUG_UART_Init(void)
