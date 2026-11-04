@@ -1,0 +1,32 @@
+# Keil uVision
+*.uvguix.*
+*.uvgui.*
+Listings/
+Objects/*.o
+Objects/*.d
+Objects/*.crf
+Objects/*.__i
+Objects/*.dep
+Objects/*.lnp
+Objects/*.htm
+
+# Eclipse / STM32CubeIDE
+.metadata/
+*.ninja_deps
+*.ninja_log
+
+# Gowin EDA temporary files
+impl/temp/
+impl/gwsynthesis/
+*.db
+*.log
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/

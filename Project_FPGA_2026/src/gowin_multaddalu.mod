@@ -1,0 +1,35 @@
+-series GW1NSR
+-device GW1NSR-4C
+-device_version 
+-package QFN48P
+-part_number GW1NSR-LV4CQN48PC6/I5
+
+
+-mod_name Gowin_MULTADDALU
+-file_name gowin_multaddalu
+-path C:/Gowin/Gowin_V1.9.11.03_Education_x64/IDE/bin/Documents/hoc_thiet_bo_loc/src/gowin_multaddalu/
+-type MULTADDALU
+-file_type vlg
+-multaddalu_mode 0
+-en_shiftout_a false
+-en_shiftout_b false
+-width_a0 16
+-width_b0 16
+-width_a1 16
+-width_b1 16
+-source_a0 parallel
+-source_a1 parallel
+-source_b0 parallel
+-source_b1 parallel
+-data_type_a0 signed
+-data_type_a1 signed
+-data_type_b0 signed
+-data_type_b1 signed
+-reset_mode sync
+-ina0_reg registered
+-inb0_reg registered
+-ina1_reg registered
+-inb1_reg registered
+-pipe0_reg registered
+-pipe1_reg registered
+-out_reg registered

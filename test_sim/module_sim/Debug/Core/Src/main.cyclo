@@ -1,0 +1,12 @@
+../Core/Src/main.c:97:6:SIM800_SendCmd	1
+../Core/Src/main.c:105:6:SIM_ParseLine	4
+../Core/Src/main.c:129:5:main	11
+../Core/Src/main.c:296:6:SystemClock_Config	3
+../Core/Src/main.c:335:6:PC_Print	1
+../Core/Src/main.c:343:6:PC_Println	1
+../Core/Src/main.c:352:9:SIM_Send_Command	4
+../Core/Src/main.c:378:9:SIM_Send_SMS_Core	18
+../Core/Src/main.c:521:9:SIM_AutoSend_SMS	3
+../Core/Src/main.c:540:6:HAL_UART_RxCpltCallback	10
+../Core/Src/main.c:595:6:HAL_UART_ErrorCallback	3
+../Core/Src/main.c:614:6:Error_Handler	1

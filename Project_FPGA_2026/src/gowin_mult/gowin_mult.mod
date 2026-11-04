@@ -1,0 +1,25 @@
+-series GW1NSR
+-device GW1NSR-4C
+-device_version 
+-package QFN48P
+-part_number GW1NSR-LV4CQN48PC6/I5
+
+
+-mod_name Gowin_MULT
+-file_name gowin_mult
+-path D:/math_core_ffewfwfsdsd/math_core_ffewfwfsdsd/src/gowin_mult/
+-type MULT
+-file_type vlg
+-source_a parallel
+-source_b parallel
+-width_a 16
+-width_b 16
+-data_type_a signed
+-data_type_b signed
+-en_shiftout_a false
+-en_shiftout_b false
+-reset_mode async
+-ina_reg registered
+-inb_reg registered
+-pipe_reg bypass
+-out_reg registered

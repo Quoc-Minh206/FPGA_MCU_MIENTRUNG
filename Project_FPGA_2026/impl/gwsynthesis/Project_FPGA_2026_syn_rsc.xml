@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module name="top_module" Register="74" Alu="66" Lut="39" T_Register="579(74)" T_Alu="97(66)" T_Lut="1640(39)" T_Bsram="1(0)">
+ <SubModule name="u_reader" Register="197" Lut="337" T_Register="197(197)" T_Lut="337(337)"/>
+ <SubModule name="u_sd_logger" Register="94" Alu="31" Lut="75" Bsram="1" T_Register="177(94)" T_Alu="31(31)" T_Lut="486(75)" T_Bsram="1(1)">
+  <SubModule name="u_sd_spi" Register="83" Lut="411" T_Register="83(83)" T_Lut="411(411)"/>
+ </SubModule>
+ <SubModule name="u_ascii" Register="110" Lut="746" T_Register="110(110)" T_Lut="746(746)"/>
+ <SubModule name="u_uart" Register="21" Lut="32" T_Register="21(21)" T_Lut="32(32)"/>
+</Module>

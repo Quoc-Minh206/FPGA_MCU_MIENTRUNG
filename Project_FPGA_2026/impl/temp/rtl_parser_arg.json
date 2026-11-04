@@ -1,0 +1,101 @@
+{
+ "Device" : "GW1NSR-4C",
+ "Files" : [
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/Clock_manager.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/accel_threshold_detector.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/cordic/cordic.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/cordic_attitude_estimator.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/fifo_hs/fifo_hs.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/fir_coefficients_rom.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/fir_fsm.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_mult/gowin_mult.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_multaddalu.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_pllvr/gowin_pllvr.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/mpu6050_hardware_reader.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sensor_to_ascii.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/uart_tx.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/main.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_core_top.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_pipeline_ctrl.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/spi_master/spi_master.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sonix_spi_wake_controller.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/stat_feature_extractor.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sd_spi_master.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sd_card_logger.v",
+   "Type" : "verilog"
+  },
+  {
+   "Path" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+   "Type" : "verilog"
+  }
+ ],
+ "IncludePath" : [
+
+ ],
+ "LoopLimit" : 2000,
+ "ResultFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/impl/temp/rtl_parser.result",
+ "Top" : "top_module",
+ "VerilogStd" : "verilog_2001",
+ "VhdlStd" : "vhdl_93"
+}

@@ -1,0 +1,236 @@
+[
+ {
+  "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/Clock_manager.v",
+  "InstLine" : 10,
+  "InstName" : "Clock_manager",
+  "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/Clock_manager.v",
+  "ModuleLine" : 10,
+  "ModuleName" : "Clock_manager",
+  "SubInsts" : [
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/Clock_manager.v",
+    "InstLine" : 18,
+    "InstName" : "u_pllvr",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_pllvr/gowin_pllvr.v",
+    "ModuleLine" : 9,
+    "ModuleName" : "Gowin_PLLVR"
+   }
+  ]
+ },
+ {
+  "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+  "InstLine" : 15,
+  "InstName" : "top_module",
+  "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+  "ModuleLine" : 15,
+  "ModuleName" : "top_module",
+  "SubInsts" : [
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 176,
+    "InstName" : "u_fifo",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/fifo_hs/fifo_hs.v",
+    "ModuleLine" : 9,
+    "ModuleName" : "FIFO_HS_Top"
+   },
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 73,
+    "InstName" : "u_reader",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/mpu6050_hardware_reader.v",
+    "ModuleLine" : 10,
+    "ModuleName" : "mpu6050_hardware_reader"
+   },
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 94,
+    "InstName" : "u_sd_logger",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sd_card_logger.v",
+    "ModuleLine" : 13,
+    "ModuleName" : "sd_card_logger",
+    "SubInsts" : [
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sd_card_logger.v",
+      "InstLine" : 100,
+      "InstName" : "u_sd_spi",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sd_spi_master.v",
+      "ModuleLine" : 17,
+      "ModuleName" : "sd_spi_master"
+     }
+    ]
+   },
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 116,
+    "InstName" : "u_ascii",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sensor_to_ascii.v",
+    "ModuleLine" : 11,
+    "ModuleName" : "sensor_to_ascii"
+   },
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 134,
+    "InstName" : "u_uart",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/uart_tx.v",
+    "ModuleLine" : 10,
+    "ModuleName" : "uart_tx"
+   },
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 162,
+    "InstName" : "u_fir",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/main.v",
+    "ModuleLine" : 1,
+    "ModuleName" : "fir_top_module",
+    "SubInsts" : [
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/main.v",
+      "InstLine" : 23,
+      "InstName" : "fsm_inst",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/fir_fsm.v",
+      "ModuleLine" : 1,
+      "ModuleName" : "fir_fsm"
+     },
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/main.v",
+      "InstLine" : 38,
+      "InstName" : "rom_inst",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/fir_coefficients_rom.v",
+      "ModuleLine" : 1,
+      "ModuleName" : "fir_coefficients_rom"
+     },
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/main.v",
+      "InstLine" : 44,
+      "InstName" : "dsp_inst",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_multaddalu.v",
+      "ModuleLine" : 9,
+      "ModuleName" : "Gowin_MULTADDALU"
+     }
+    ]
+   },
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 200,
+    "InstName" : "u_math",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_core_top.v",
+    "ModuleLine" : 17,
+    "ModuleName" : "math_core_top",
+    "SubInsts" : [
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_core_top.v",
+      "InstLine" : 93,
+      "InstName" : "u_pipeline_ctrl",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_pipeline_ctrl.v",
+      "ModuleLine" : 18,
+      "ModuleName" : "math_pipeline_ctrl"
+     },
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_core_top.v",
+      "InstLine" : 138,
+      "InstName" : "u_threshold_detector",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/accel_threshold_detector.v",
+      "ModuleLine" : 15,
+      "ModuleName" : "accel_threshold_detector",
+      "SubInsts" : [
+       {
+        "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/accel_threshold_detector.v",
+        "InstLine" : 61,
+        "InstName" : "u_mult_ax",
+        "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_mult/gowin_mult.v",
+        "ModuleLine" : 9,
+        "ModuleName" : "Gowin_MULT"
+       },
+       {
+        "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/accel_threshold_detector.v",
+        "InstLine" : 70,
+        "InstName" : "u_mult_ay",
+        "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_mult/gowin_mult.v",
+        "ModuleLine" : 9,
+        "ModuleName" : "Gowin_MULT"
+       },
+       {
+        "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/accel_threshold_detector.v",
+        "InstLine" : 79,
+        "InstName" : "u_mult_az",
+        "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_mult/gowin_mult.v",
+        "ModuleLine" : 9,
+        "ModuleName" : "Gowin_MULT"
+       }
+      ]
+     },
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_core_top.v",
+      "InstLine" : 156,
+      "InstName" : "u_cordic_estimator",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/cordic_attitude_estimator.v",
+      "ModuleLine" : 16,
+      "ModuleName" : "cordic_attitude_estimator",
+      "SubInsts" : [
+       {
+        "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/cordic_attitude_estimator.v",
+        "InstLine" : 65,
+        "InstName" : "u_cordic1_roll",
+        "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/cordic/cordic.v",
+        "ModuleLine" : 9,
+        "ModuleName" : "CORDIC_Top"
+       },
+       {
+        "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/cordic_attitude_estimator.v",
+        "InstLine" : 152,
+        "InstName" : "u_cordic2_pitch",
+        "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/cordic/cordic.v",
+        "ModuleLine" : 9,
+        "ModuleName" : "CORDIC_Top"
+       }
+      ]
+     },
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/math_core_top.v",
+      "InstLine" : 175,
+      "InstName" : "u_stat_extractor",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/stat_feature_extractor.v",
+      "ModuleLine" : 16,
+      "ModuleName" : "stat_feature_extractor",
+      "SubInsts" : [
+       {
+        "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/stat_feature_extractor.v",
+        "InstLine" : 49,
+        "InstName" : "u_mult_sample",
+        "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_mult/gowin_mult.v",
+        "ModuleLine" : 9,
+        "ModuleName" : "Gowin_MULT"
+       },
+       {
+        "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/stat_feature_extractor.v",
+        "InstLine" : 143,
+        "InstName" : "u_mult_mu",
+        "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/gowin_mult/gowin_mult.v",
+        "ModuleLine" : 9,
+        "ModuleName" : "Gowin_MULT"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/top_module.v",
+    "InstLine" : 225,
+    "InstName" : "u_spi",
+    "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sonix_spi_wake_controller.v",
+    "ModuleLine" : 16,
+    "ModuleName" : "sonix_spi_wake_controller",
+    "SubInsts" : [
+     {
+      "InstFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/sonix_spi_wake_controller.v",
+      "InstLine" : 51,
+      "InstName" : "u_spi_master_ip",
+      "ModuleFile" : "D:/math_core_ffewfwfsdsd/Project_FPGA_2026/src/spi_master/spi_master.v",
+      "ModuleLine" : 9,
+      "ModuleName" : "SPI_MASTER_Top"
+     }
+    ]
+   }
+  ]
+ }
+]

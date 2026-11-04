@@ -1,0 +1,35 @@
+// =============================================================================
+// File:        mpu6050_uart_test.cst
+// Thiết bị:    GW1NSR-LV4CQN48PC6/I5 (OneKiwi 4K / Tang Nano 4K)
+// Mô tả:       Ràng buộc chân cho bài test MPU6050 và UART TX
+//              Cấu hình các chân cách xa nhau chống nhiễu:
+//              - SCL: Pin 44 (3-44)
+//              - SDA: Pin 39 (3-39, cách SCL 5 chân)
+//              - UART TX: Pin 31 (3-31, Bank 2 cách xa hàng chân I2C)
+// =============================================================================
+
+// Xung nhịp gốc 27 MHz
+IO_LOC "sys_clkin" 45;
+IO_PORT "sys_clkin" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// Giao tiếp I2C với cảm biến MPU6050
+// SCL tại Pin 44 (3-44)
+IO_LOC "i2c_scl" 44;
+IO_PORT "i2c_scl" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+// SDA tại Pin 39 (3-39), kích hoạt trở kéo nội Pull-Up
+IO_LOC "i2c_sda" 39;
+IO_PORT "i2c_sda" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+// Ngõ ra UART TX gửi dữ liệu lên PC (nối vào chân RX của USB-TTL)
+// Đặt tại Pin 31 (3-31) cách xa hoàn toàn
+IO_LOC "uart_tx_pin" 31;
+IO_PORT "uart_tx_pin" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// Các đèn LED chỉ thị trạng thái
+IO_LOC "led_heartbeat" 32;
+IO_PORT "led_heartbeat" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC "led_i2c_ok" 23;
+IO_PORT "led_i2c_ok" IO_TYPE=LVCMOS18 DRIVE=8;
+IO_LOC "led_data_rx" 18;
+IO_PORT "led_data_rx" IO_TYPE=LVCMOS18 DRIVE=8;

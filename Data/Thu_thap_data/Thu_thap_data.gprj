@@ -1,0 +1,14 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW1NSR-4C" pn="GW1NSR-LV4CQN48PC6/I5">gw1nsr4c-000</Device>
+    <FileList>
+        <File path="src/Clock_manager.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pllvr/gowin_pllvr.v" type="file.verilog" enable="1"/>
+        <File path="src/mpu6050_hardware_reader.v" type="file.verilog" enable="1"/>
+        <File path="src/sd_logger_top.v.v" type="file.verilog" enable="1"/>
+        <File path="src/sd_spi_master.v.v" type="file.verilog" enable="1"/>
+    </FileList>
+</Project>

@@ -1,0 +1,46 @@
+[
+ {
+  "InstFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/sd_logger_top.v.v",
+  "InstLine" : 3,
+  "InstName" : "sd_logger_top",
+  "ModuleFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/sd_logger_top.v.v",
+  "ModuleLine" : 3,
+  "ModuleName" : "sd_logger_top",
+  "SubInsts" : [
+   {
+    "InstFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/sd_logger_top.v.v",
+    "InstLine" : 24,
+    "InstName" : "u_clk",
+    "ModuleFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/Clock_manager.v",
+    "ModuleLine" : 10,
+    "ModuleName" : "Clock_manager",
+    "SubInsts" : [
+     {
+      "InstFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/Clock_manager.v",
+      "InstLine" : 18,
+      "InstName" : "u_pllvr",
+      "ModuleFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/gowin_pllvr/gowin_pllvr.v",
+      "ModuleLine" : 9,
+      "ModuleName" : "Gowin_PLLVR"
+     }
+    ]
+   },
+   {
+    "InstFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/sd_logger_top.v.v",
+    "InstLine" : 35,
+    "InstName" : "u_imu",
+    "ModuleFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/mpu6050_hardware_reader.v",
+    "ModuleLine" : 18,
+    "ModuleName" : "mpu6050_hardware_reader"
+   },
+   {
+    "InstFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/sd_logger_top.v.v",
+    "InstLine" : 114,
+    "InstName" : "u_sd",
+    "ModuleFile" : "C:/Vong_chung_ket/Data/Thu_thap_data/src/sd_spi_master.v.v",
+    "ModuleLine" : 3,
+    "ModuleName" : "sd_spi_master"
+   }
+  ]
+ }
+]

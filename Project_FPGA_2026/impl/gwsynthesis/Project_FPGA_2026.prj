@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gowin-synthesis-project>
+<Project>
+    <Version>beta</Version>
+    <Device id="GW1NSR-4C" package="QFN48P" speed="6" partNumber="GW1NSR-LV4CQN48PC6/I5"/>
+    <FileList>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\Clock_manager.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\accel_threshold_detector.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\cordic\cordic.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\cordic_attitude_estimator.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\fifo_hs\fifo_hs.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\fir_coefficients_rom.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\fir_fsm.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\gowin_mult\gowin_mult.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\gowin_multaddalu.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\gowin_pllvr\gowin_pllvr.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\mpu6050_hardware_reader.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\sensor_to_ascii.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\uart_tx.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\main.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\math_core_top.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\math_pipeline_ctrl.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\spi_master\spi_master.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\sonix_spi_wake_controller.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\stat_feature_extractor.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\sd_spi_master.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\sd_card_logger.v" type="verilog"/>
+        <File path="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\src\top_module.v" type="verilog"/>
+    </FileList>
+    <OptionList>
+        <Option type="disable_insert_pad" value="0"/>
+        <Option type="global_freq" value="50.000"/>
+        <Option type="looplimit" value="2000"/>
+        <Option type="output_file" value="D:\math_core_ffewfwfsdsd\Project_FPGA_2026\impl\gwsynthesis\Project_FPGA_2026.vg"/>
+        <Option type="print_all_synthesis_warning" value="0"/>
+        <Option type="ram_rw_check" value="0"/>
+        <Option type="top_module" value="top_module"/>
+        <Option type="vcc" value="1.2"/>
+        <Option type="verilog_language" value="verilog-2001"/>
+        <Option type="vhdl_language" value="vhdl-1993"/>
+    </OptionList>
+</Project>

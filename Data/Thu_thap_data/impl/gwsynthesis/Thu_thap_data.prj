@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gowin-synthesis-project>
+<Project>
+    <Version>beta</Version>
+    <Device id="GW1NSR-4C" package="QFN48P" speed="6" partNumber="GW1NSR-LV4CQN48PC6/I5"/>
+    <FileList>
+        <File path="C:\Vong_chung_ket\Data\Thu_thap_data\src\Clock_manager.v" type="verilog"/>
+        <File path="C:\Vong_chung_ket\Data\Thu_thap_data\src\mpu6050_hardware_reader.v" type="verilog"/>
+        <File path="C:\Vong_chung_ket\Data\Thu_thap_data\src\sd_logger_top.v.v" type="verilog"/>
+        <File path="C:\Vong_chung_ket\Data\Thu_thap_data\src\sd_spi_master.v.v" type="verilog"/>
+        <File path="C:\Vong_chung_ket\Data\Thu_thap_data\src\gowin_pllvr\gowin_pllvr.v" type="verilog"/>
+    </FileList>
+    <OptionList>
+        <Option type="disable_insert_pad" value="0"/>
+        <Option type="global_freq" value="50.000"/>
+        <Option type="looplimit" value="2000"/>
+        <Option type="output_file" value="C:\Vong_chung_ket\Data\Thu_thap_data\impl\gwsynthesis\Thu_thap_data.vg"/>
+        <Option type="print_all_synthesis_warning" value="0"/>
+        <Option type="ram_rw_check" value="0"/>
+        <Option type="vcc" value="1.2"/>
+        <Option type="verilog_language" value="verilog-2001"/>
+        <Option type="vhdl_language" value="vhdl-1993"/>
+    </OptionList>
+</Project>

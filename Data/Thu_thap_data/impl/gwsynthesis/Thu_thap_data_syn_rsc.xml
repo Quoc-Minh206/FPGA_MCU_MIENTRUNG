@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module name="sd_logger_top" Register="62" Lut="77" Bsram="1" T_Register="264(62)" T_Alu="4(0)" T_Lut="384(77)" T_Bsram="1(1)">
+ <SubModule name="u_clk">
+  <SubModule name="u_pllvr"/>
+ </SubModule>
+ <SubModule name="u_imu" Register="164" Alu="4" Lut="232" T_Register="164(164)" T_Alu="4(4)" T_Lut="232(232)"/>
+ <SubModule name="u_sd" Register="38" Lut="75" T_Register="38(38)" T_Lut="75(75)"/>
+</Module>

@@ -1,0 +1,61 @@
+// =============================================================================
+// File:        FPGA_MIENTRUNG.cst
+// Target:      GW1NSR-LV4CQN48PC6/I5 (Kit OneKiwi 4K / Tang Nano 4K)
+// Sơ đồ khớp 100% với cáp bẹ 8 màu (46 -> 39) & Bo MCU Sonix EVK
+// =============================================================================
+
+// 1. Onboard Clock 27 MHz & Nút nhấn S1 (Pin 14) / S2 (Pin 15)
+IO_LOC "sys_clkin" 45;
+IO_PORT "sys_clkin" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+IO_LOC "btn_s1" 14;
+IO_PORT "btn_s1" IO_TYPE=LVCMOS18 PULL_MODE=UP;
+
+IO_LOC "btn_s2" 15;
+IO_PORT "btn_s2" IO_TYPE=LVCMOS18 PULL_MODE=UP;
+
+// 2. Onboard LEDs
+IO_LOC "led_onboard_1" 10;
+IO_PORT "led_onboard_1" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC "led_onboard_2" 13;
+IO_PORT "led_onboard_2" IO_TYPE=LVCMOS18 DRIVE=8;
+
+// 3. Đường ngắt đánh thức WAKE IRQ (Dây màu ĐỎ - Pin 41 FPGA -> P2.9 MCU Cụm J7)
+IO_LOC "trigger_p41" 41;
+IO_PORT "trigger_p41" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// 4. Kết nối Bus SPI sang MCU Sonix SN32F407 (Cụm J12 trên EVK)
+// Pin 44 (Dây Xanh biển): SCK  -> P1.0 (SCK_P10 trên J12 Pin 1)
+IO_LOC "spi_sck" 44;
+IO_PORT "spi_sck" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// Pin 43 (Dây Tím):       MISO <- P1.1 (MISO_P11 trên J12 Pin 2)
+IO_LOC "spi_miso" 43;
+IO_PORT "spi_miso" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// Pin 42 (Dây Xanh lá):   MOSI -> P1.2 (MOSI_P12 trên J12 Pin 3)
+IO_LOC "spi_mosi" 42;
+IO_PORT "spi_mosi" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// Pin 46 (Dây Trắng):     CS_N -> P1.8 (SEL_P18 trên J12 Pin 1)
+IO_LOC "spi_cs_n" 46;
+IO_PORT "spi_cs_n" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// 5. Cảm biến IMU MPU6050 (BẢNG 2 file constrain.pdf - Header J1 Bank 1)
+// Pin 39: SCL
+IO_LOC "i2c_scl" 39;
+IO_PORT "i2c_scl" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+// Pin 40: SDA
+IO_LOC "i2c_sda" 40;
+IO_PORT "i2c_sda" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+// 6. Test GPIO Header Pins khác
+IO_LOC "trigger_p32" 32;
+IO_PORT "trigger_p32" IO_TYPE=LVCMOS25 DRIVE=8;
+IO_LOC "trigger_p31" 31;
+IO_PORT "trigger_p31" IO_TYPE=LVCMOS25 DRIVE=8;
+IO_LOC "trigger_p27" 27;
+IO_PORT "trigger_p27" IO_TYPE=LVCMOS25 DRIVE=8;
+IO_LOC "trigger_p28" 28;
+IO_PORT "trigger_p28" IO_TYPE=LVCMOS25 DRIVE=8;
