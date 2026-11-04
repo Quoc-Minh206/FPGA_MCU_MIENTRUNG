@@ -238,6 +238,18 @@ static void SIM4G_Hardware_UART1_Init(void)
     SN_UART1->CTRL = 0xC1UL;
 }
 
+static void SIM4G_ExecAndPrint(const char *label, const char *cmd, uint32_t wait_ms)
+{
+    SIM4G_ClearRx();
+    SIM4G_SendStr(cmd);
+    uint32_t t0 = GetTick_ms();
+    while ((GetTick_ms() - t0) < wait_ms) {
+        SIM4G_Poll();
+        Delay_ms(5);
+    }
+    DEBUG_UART_Printf("[%s] %s -> %s\r\n", label, cmd, (const char *)g_sim_rx_buf);
+}
+
 void SIM4G_Init(void)
 {
     SIM4G_Hardware_UART1_Init();
@@ -285,14 +297,19 @@ void SIM4G_Init(void)
     DEBUG_UART_SendString("[MODEM] The SIM: READY\r\n");
 
     /* Kiểm tra chất lượng sóng và nhà mạng */
-    SIM4G_SendCmd("AT+CSQ\r\n", "OK", 300);
-    DEBUG_UART_Printf("[MODEM] Cuong do song (CSQ): %s\r\n", (const char *)g_sim_rx_buf);
-
-    SIM4G_SendCmd("AT+COPS?\r\n", "OK", 500);
-    DEBUG_UART_Printf("[MODEM] Nha mang viễn thông: %s\r\n", (const char *)g_sim_rx_buf);
-
-    SIM4G_SendCmd("AT+CSCA?\r\n", "OK", 500);
-    DEBUG_UART_Printf("[MODEM] Trung tam tin nhan (SMSC): %s\r\n", (const char *)g_sim_rx_buf);
+        /* IN TOAN BO THONG TIN CHAN DOAN MODEM RA DEBUG UART */
+    SIM4G_ExecAndPrint("MODEM-INFO", "ATI\r\n", 300);
+    SIM4G_ExecAndPrint("MODEM-IMSI", "AT+CIMI\r\n", 300);
+    SIM4G_ExecAndPrint("MODEM-CSQ",  "AT+CSQ\r\n", 300);
+    SIM4G_ExecAndPrint("MODEM-COPS", "AT+COPS?\r\n", 500);
+    SIM4G_ExecAndPrint("MODEM-SMSC", "AT+CSCA?\r\n", 500);
+    SIM4G_ExecAndPrint("MODEM-CREG", "AT+CREG?\r\n", 300);
+    SIM4G_ExecAndPrint("MODEM-CEREG","AT+CEREG?\r\n", 300);
+    SIM4G_ExecAndPrint("MODEM-INBOX","AT+CMGL=\"ALL\"\r\n", 800);
+    SIM4G_ExecAndPrint("MODEM-CNUM", "AT+CNUM\r\n", 400);
+    SIM4G_ExecAndPrint("MODEM-MSG1", "AT+CMGR=1\r\n", 600);
+    SIM4G_ExecAndPrint("MODEM-MSG2", "AT+CMGR=2\r\n", 600);
+    SIM4G_ExecAndPrint("MODEM-BAL",  "AT+CUSD=1,\"*101#\",15\r\n", 1500);
 
     DEBUG_UART_SendString("[MODEM] Dang kiem tra dang ky mang...\r\n");
 
@@ -358,6 +375,7 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     }
     cmd[i++] = '\"';
     cmd[i++] = '\r';
+    cmd[i++] = '\n';
     cmd[i]   = '\0';
 
     DEBUG_UART_Printf("[SMS] Sending: AT+CMGS=\"%s\" -> Waiting for '>'\r\n", phone_number);

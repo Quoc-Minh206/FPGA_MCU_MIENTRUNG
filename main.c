@@ -193,8 +193,11 @@ static uint8_t Dispatch_Emergency_SMS(void)
     /* Bật LED D11 báo trạng thái đang truyền 4G */
     LED_D11_4G_ON();
 
-    /* Gửi tin nhắn SMS qua SIM A7680C */
-    uint8_t ok = SIM4G_SendSMS(EMERGENCY_PHONE_NUMBER, sms_buffer);
+    /* Gửi tin nhắn SMS lần 1 tới số quốc tế +84 */
+    uint8_t ok = SIM4G_SendSMS("+84792398699", sms_buffer);
+    Delay_ms(1000);
+    /* Gửi thêm lần 2 tới số nội địa 0792398699 */
+    SIM4G_SendSMS("0792398699", sms_buffer);
 
     LED_D11_4G_OFF();
 
