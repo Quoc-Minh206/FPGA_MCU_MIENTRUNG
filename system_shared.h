@@ -63,14 +63,14 @@
  *      + LED D6 (P3.8 - Heartbeat), LED D7 (P3.9 - Warning)
 =============================================================================
 */
-// Còi Buzzer: Bật đồng thời cả P2.5 (Cọc P25 file constrain) và dao động PZ1 onboard (P3.0)
+// Còi Buzzer: Dao động kích còi PZ1 onboard (P3.0)
 extern volatile uint8_t g_buzzer_enabled;
-#define BUZZER_ON()        do { GPIO2_BSET = (1UL << 5); g_buzzer_enabled = 1; } while(0)
-#define BUZZER_OFF()       do { GPIO2_BCLR = (1UL << 5); g_buzzer_enabled = 0; GPIO3_BCLR = (1UL << 0); } while(0)
+#define BUZZER_ON()        do { g_buzzer_enabled = 1; } while(0)
+#define BUZZER_OFF()       do { g_buzzer_enabled = 0; GPIO3_BCLR = (1UL << 0); } while(0)
 
-// Đèn LED cảnh báo tai nạn: Bật đồng thời P2.6 (Cọc P26 file constrain - High) và D7 (P3.9 onboard - Low)
-#define ALERT_LED_ON()     do { GPIO2_BSET = (1UL << 6); GPIO3_BCLR = (1UL << 9); } while(0)
-#define ALERT_LED_OFF()    do { GPIO2_BCLR = (1UL << 6); GPIO3_BSET = (1UL << 9); } while(0)
+// Đèn LED cảnh báo tai nạn: Bật D7 (P3.9 onboard - Active Low)
+#define ALERT_LED_ON()     (GPIO3_BCLR = (1UL << 9))
+#define ALERT_LED_OFF()    (GPIO3_BSET = (1UL << 9))
 
 // Đèn LED D6 (P3.8 onboard) - Heartbeat hệ thống
 #define LED_D6_ON()        (GPIO3_BCLR = (1UL << 8))

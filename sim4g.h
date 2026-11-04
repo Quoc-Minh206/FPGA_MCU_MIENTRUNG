@@ -18,6 +18,7 @@ extern volatile uint8_t  g_sim_ready;
 extern volatile uint8_t  g_sim_sms_sent;
 
 void    SIM4G_Init(void);
+void    SIM4G_Poll(void);
 void    SIM4G_SendByte(uint8_t b);
 void    SIM4G_SendStr(const char *str);
 void    SIM4G_ClearRx(void);

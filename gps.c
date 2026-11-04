@@ -376,42 +376,10 @@ static void nmea_feed(char c)
 /*=============================  UART0  ====================================*/
 void UART0_IRQHandler(void)
 {
-    uint32_t ii, ls;
-    uint16_t next;
-    uint32_t guard = 32;
-
-    while (((ii = SN_UART0->II) & 0x01UL) == 0UL && (--guard > 0))
-    {
-        uint32_t intid = (ii >> 1) & 0x07UL;
-        switch (intid)
-        {
-        case 3:                             /* RLS: loi duong truyen        */
-            ls = SN_UART0->LS;
-            if (ls & 0x9EUL) g_gps.uart_err++;
-            break;
-
-        case 2:                             /* RDA                          */
-        case 6:                             /* time-out ky tu               */
-            while (SN_UART0->LS & 0x01UL)   /* RDR                          */
-            {
-                uint8_t b = (uint8_t)SN_UART0->RB;
-                g_gps.rx_bytes++;
-                next = (uint16_t)((s_head + 1U) & (RX_RING_SIZE - 1U));
-                if (next != s_tail) { s_ring[s_head] = b; s_head = next; }
-                else                { g_gps.uart_err++; }   /* tran bo dem */
-            }
-            if (intid == 6) {
-                (void)SN_UART0->RB;
-            }
-            break;
-
-        default:
-            (void)SN_UART0->LS;
-            (void)SN_UART0->RB;
-            guard = 0;
-            break;
-        }
-    }
+    /* Vô hiệu hóa hoàn toàn ngắt để bảo vệ SysTick và tránh treo CPU */
+    SN_UART0->IE = 0x00UL;
+    NVIC_DisableIRQ(UART0_IRQn);
+    NVIC_ClearPendingIRQ(UART0_IRQn);
 }
 
 void GPS_Init(void)
@@ -443,26 +411,27 @@ void GPS_Init(void)
     /* 4. FIFO: bat + reset RX/TX, nguong 1 byte */
     SN_UART0->FIFOCTRL = 0x01UL | 0x02UL | 0x04UL;
 
-    /* 5. Ngat: RDA + RLS */
-    SN_UART0->IE = 0x01UL | 0x04UL;
+    /* 5. Vô hiệu hóa ngắt phần cứng UART0 để chạy cơ chế Polling an toàn tuyệt đối */
+    SN_UART0->IE = 0x00UL;
+    NVIC_DisableIRQ(UART0_IRQn);
+    NVIC_ClearPendingIRQ(UART0_IRQn);
 
     /* 6. Bat UART, RX, TX */
     SN_UART0->CTRL = 0x01UL | (1UL << 6) | (1UL << 7);
 
     s_head = s_tail = 0;
     s_state = ST_WAIT_DOLLAR;
-
-    NVIC_ClearPendingIRQ(UART0_IRQn);
-    NVIC_EnableIRQ(UART0_IRQn);
 }
 
 void GPS_Process(void)
 {
-    while (s_tail != s_head)
+    /* Đọc trực tiếp từ RX FIFO của UART0 theo cơ chế Polled non-blocking */
+    int guard = 32;
+    while ((SN_UART0->LS & 0x01UL) && (--guard > 0))
     {
-        char c = (char)s_ring[s_tail];
-        s_tail = (uint16_t)((s_tail + 1U) & (RX_RING_SIZE - 1U));
-        nmea_feed(c);
+        uint8_t b = (uint8_t)(SN_UART0->RB & 0xFFUL);
+        g_gps.rx_bytes++;
+        nmea_feed((char)b);
     }
 }
 

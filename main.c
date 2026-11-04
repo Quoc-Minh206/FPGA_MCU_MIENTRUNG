@@ -14,7 +14,7 @@
 #include "tinyml_infer.h"
 #include "debug_uart.h"
 
-#define EMERGENCY_PHONE_NUMBER  "0932591161"
+#define EMERGENCY_PHONE_NUMBER  "0792398699"
 
 /*=============================  BIẾN TOÀN CỤC  ============================*/
 volatile uint32_t g_tick_ms = 0;
@@ -68,6 +68,7 @@ void Delay_ms(uint32_t ms)
     uint32_t start = g_tick_ms;
     while ((g_tick_ms - start) < ms) {
         GPS_Process();
+        SIM4G_Poll();
     }
 }
 
@@ -78,6 +79,7 @@ void Buzzer_Beep(uint32_t duration_ms)
     uint32_t start = g_tick_ms;
     while ((g_tick_ms - start) < duration_ms) {
         GPS_Process();
+        SIM4G_Poll();
     }
     BUZZER_OFF();
 }
@@ -107,12 +109,11 @@ void Restore_SW3_Matrix_GPIO(void)
 static void Hardware_GPIO_Init(void)
 {
     /*
-     * 1. Cấu hình Còi chủ động P2.5 và LED cảnh báo đỏ P2.6:
-     *    - GPIOn_MODE (Offset 0x04): Bit = 1 là Output, Bit = 0 là Input.
-     *    - GPIOn_BCLR (Offset 0x28): Ghi 1 để xóa chân Output về 0V an toàn.
+     * 1. Cấu hình các chân cột phím P2.5 (COL1) và P2.6 (COL2) làm Input Pull-up:
+     *    Tuyệt đối không để Output mức High để tránh ngắn mạch với chân quét hàng P1.4 (0V).
      */
-    SN_GPIO2->MODE |= (1UL << 5) | (1UL << 6);
-    SN_GPIO2->BCLR  = (1UL << 5) | (1UL << 6);
+    SN_GPIO2->MODE &= ~((1UL << 5) | (1UL << 6));
+    SN_GPIO2->CFG  &= ~((3UL << 10) | (3UL << 12));
 
     /*
      * 2. Cấu hình các chân ma trận phím P1.5..P1.7 và P2.10:
@@ -182,12 +183,15 @@ static uint8_t Dispatch_Emergency_SMS(void)
         DEBUG_UART_SendString("[SMS] GPS: No Satellite Fix (Fix=0)\r\n");
     }
 
+    DEBUG_UART_SendString("[DBG] 1: calling LED_D11_4G_ON\r\n");
     /* Bật LED D11 báo trạng thái đang truyền 4G */
     LED_D11_4G_ON();
 
+    DEBUG_UART_SendString("[DBG] 2: calling SIM4G_SendSMS\r\n");
     /* Gửi tin nhắn SMS qua SIM A7680C */
     uint8_t ok = SIM4G_SendSMS(EMERGENCY_PHONE_NUMBER, sms_buffer);
 
+    DEBUG_UART_SendString("[DBG] 3: returned from SIM4G_SendSMS\r\n");
     LED_D11_4G_OFF();
 
     /* Khôi phục cứng chân P1.4 = 0V và P2.4 Pull-up ngay sau khi kết thúc gửi */
@@ -242,10 +246,8 @@ int main(void)
 
     /* 1. Khởi tạo UART Debug trên P3.10 TX, P3.11 RX (115200 8N1) */
     DEBUG_UART_Init();
-    DEBUG_UART_SendString("\r\n========================================\r\n");
-    DEBUG_UART_SendString("   HE THONG PHAT HIEN TAI NAN XE MAY\r\n");
-    DEBUG_UART_SendString("   MCU: SONiX SN32F407 | FPGA: GW1NSR-4C\r\n");
-    DEBUG_UART_SendString("   So dien thoai cuu ho: 0932591161\r\n");
+                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
+    DEBUG_UART_SendString("   So dien thoai cuu ho: 0792398699\r\n");
     DEBUG_UART_SendString("========================================\r\n");
 
     /* 2. Khởi tạo SysTick ngắt 2kHz (IHRC 12MHz / 2000 = 6000 chu kỳ) */
@@ -274,9 +276,7 @@ int main(void)
     DEBUG_UART_SendString("[MODEM] Initializing SIM A7680C (UART1 115200)...\r\n");
     SIM4G_Init();
     if (g_sim_ready) {
-        DEBUG_UART_SendString("[MODEM] Ready (CPIN OK)\r\n");
-    } else {
-        DEBUG_UART_SendString("[MODEM] WARN: Not Ready or SIM Missing\r\n");
+                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
     }
 
     BUZZER_OFF();
@@ -291,8 +291,9 @@ int main(void)
     {
         uint32_t now = g_tick_ms;
 
-        /* A. Duy trì cỗ máy trạng thái tách chuỗi NMEA từ GPS trên UART0 */
+        /* A. Duy trì cỗ máy trạng thái tách chuỗi NMEA từ GPS trên UART0 và đệm SIM 4G */
         GPS_Process();
+        SIM4G_Poll();
 
         /* B. Nhịp tim hệ thống Heartbeat trên LED D6 (P3.8):
          *    - Khi chưa khóa vệ tinh GPS (Fix=0): Chớp tắt 500ms
@@ -323,7 +324,10 @@ int main(void)
         /* C. BẮT LỆNH ĐIỀU KHIỂN TỪ MÁY TÍNH QUA DEBUG UART (P3.11 RX) */
         if (DEBUG_UART_Available()) {
             char cmd = DEBUG_UART_ReadChar();
-            if (cmd == 't' || cmd == 'T' || cmd == '1') {
+            if (cmd == 'c' || cmd == 'C') {
+                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
+                SIM4G_Init();
+            } else if (cmd == 't' || cmd == 'T' || cmd == '1') {
                 Execute_Emergency_Routine("PC Serial Command ('t')");
             } else if (cmd == 's' || cmd == 'S') {
                 DEBUG_UART_Printf("[STATUS] Tick=%u ms, GPS Fix=%d, Sats=%u, Lat=%s, Lon=%s, SIM=%d\r\n",
@@ -332,7 +336,25 @@ int main(void)
             }
         }
 
-        /* D. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK:
+        /* D. TỰ ĐỘNG KIỂM THỬ KHÔNG CẦN CHỜ NGƯỜI DÙNG BẤM NÚT (AUTONOMOUS TESTS) */
+        {
+            static uint8_t s_auto1_done = 0;
+            static uint8_t s_auto2_done = 0;
+
+            if (!s_auto1_done && (now >= 18000UL)) {
+                s_auto1_done = 1;
+                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
+                Execute_Emergency_Routine("Autonomous Boot Test #1");
+            }
+
+            if (!s_auto2_done && (now >= 55000UL)) {
+                s_auto2_done = 1;
+                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
+                Execute_Emergency_Routine("Autonomous Boot Test #2");
+            }
+        }
+
+        /* E. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK:
          *    Nhấn bao nhiêu lần cũng kêu còi và gửi được tin nhắn ổn định 100%!
          */
         if ((SN_GPIO2->DATA & (1UL << 4)) == 0UL) {

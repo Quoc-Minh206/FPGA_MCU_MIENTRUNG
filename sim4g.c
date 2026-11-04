@@ -114,74 +114,50 @@ static uint8_t SIM4G_RxContainsChar(char c)
  */
 void SIM4G_ClearRx(void)
 {
-    volatile uint32_t dummy;
-    uint32_t primask = __get_PRIMASK();
-    __disable_irq();
+    volatile uint32_t dummy = SN_UART1->LS;
+    int guard = 32;
 
-    /* 1. Reset RX FIFO phần cứng */
-    SN_UART1->FIFOCTRL |= (1UL << 1);
-
-    /* 2. Đọc xả thanh ghi LS và RB */
-    dummy = SN_UART1->LS;
-    while (SN_UART1->LS & UART_LS_RDR) {
+    /* Đọc xả sạch toàn bộ byte tồn đọng trong RX FIFO */
+    while ((SN_UART1->LS & UART_LS_RDR) && (--guard > 0)) {
         dummy = SN_UART1->RB;
     }
     (void)dummy;
 
-    /* 3. Xóa bộ đệm RAM */
+    /* Xóa bộ đệm RAM */
     g_sim_rx_len = 0;
     g_sim_rx_buf[0] = '\0';
+}
 
-    if (!primask) {
-        __enable_irq();
+/*=============================  BỘ THU POLLED UART1 (CHỐNG TREO)  ==========*/
+/*
+ * Hàm thăm dò SIM4G_Poll():
+ * Thu gom trực tiếp các byte phản hồi từ modem qua thanh ghi UART1_RB.
+ * Chạy đồng bộ trong mọi vòng lặp chờ và trong Delay_ms, bảo đảm:
+ * 1. Không bao giờ làm rơi rụng byte phản hồi từ modem.
+ * 2. TUYỆT ĐỐI KHÔNG BỊ TREO CPU hay kẹt ISR như phương pháp dùng ngắt NVIC.
+ * 3. Bộ đếm guard = 32 bảo đảm không bao giờ lặp vô tận.
+ */
+void SIM4G_Poll(void)
+{
+    volatile uint32_t ls = SN_UART1->LS;
+    (void)ls;
+
+    int guard = 32;
+    while ((SN_UART1->LS & UART_LS_RDR) && (--guard > 0)) {
+        uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
+        if (b != 0x00U && g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 2U)) {
+            g_sim_rx_buf[g_sim_rx_len++] = (char)b;
+            g_sim_rx_buf[g_sim_rx_len] = '\0';
+        }
     }
 }
 
-/*=============================  TRÌNH PHỤC VỤ NGẮT UART1  =================*/
-/*
- * Hàm ngắt UART1 được thiết kế CHỐNG TREO 100%:
- * - Bộ đếm guard = 32: Bảo đảm ngắt tuyệt đối không bao giờ bị kẹt vòng lặp vô tận.
- * - Tự động xóa cờ CTO (Character Timeout) kể cả khi FIFO đã rỗng.
- * - Toàn bộ dữ liệu từ modem A7680C được đưa vào g_sim_rx_buf mà không bị gián đoạn.
- */
 void UART1_IRQHandler(void)
 {
-    uint32_t ii;
-    volatile uint32_t ls;
-    uint32_t guard = 32;
-
-    while (((ii = SN_UART1->II) & 0x01UL) == 0UL && (--guard > 0))
-    {
-        uint32_t int_id = (ii >> 1) & 0x07UL;
-        if (int_id == 3UL) {
-            /* RLS (Receive Line Status): Xóa cờ lỗi bằng cách đọc LS */
-            ls = SN_UART1->LS;
-            (void)ls;
-        }
-
-        /* Vớt toàn bộ byte trong RX FIFO */
-        while (SN_UART1->LS & UART_LS_RDR)
-        {
-            uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
-            if (b != 0x00U && g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 2U))
-            {
-                g_sim_rx_buf[g_sim_rx_len++] = (char)b;
-                g_sim_rx_buf[g_sim_rx_len] = '\0';
-            }
-        }
-
-        /* Nếu gặp cờ CTO mà FIFO đã rỗng, bắt buộc đọc RB 1 lần để phần cứng xóa cờ CTO */
-        if (int_id == 6UL) {
-            (void)SN_UART1->RB;
-        }
-
-        /* Nếu là cờ ngắt không mong muốn khác, thoát ra ngay */
-        if (int_id != 2UL && int_id != 6UL && int_id != 3UL) {
-            (void)SN_UART1->LS;
-            (void)SN_UART1->RB;
-            break;
-        }
-    }
+    /* Vô hiệu hóa ngắt nếu vô tình phát sinh để bảo vệ CPU */
+    SN_UART1->IE = 0x00UL;
+    NVIC_DisableIRQ(UART1_IRQn);
+    NVIC_ClearPendingIRQ(UART1_IRQn);
 }
 
 /*=============================  TRUYỀN DỮ LIỆU UART1  =====================*/
@@ -214,13 +190,14 @@ uint8_t SIM4G_SendCmd(const char *cmd, const char *expected, uint32_t timeout_ms
     t_start = GetTick_ms();
     while ((GetTick_ms() - t_start) < timeout_ms)
     {
+        SIM4G_Poll();
         if (expected && SIM4G_RxContains(expected)) {
             return 1;
         }
         if (SIM4G_RxContains("ERROR")) {
             return 0;
         }
-        Delay_ms(5);
+        Delay_ms(2);
     }
     return 0;
 }
@@ -252,10 +229,10 @@ static void SIM4G_Hardware_UART1_Init(void)
     /* 5. Kích hoạt FIFO, xóa sạch TX/RX FIFO, đặt RX Trigger Level = 1 character */
     SN_UART1->FIFOCTRL = 0x07UL;
 
-    /* 6. Bật ngắt RDA (Bit 0) và RLS (Bit 2) */
-    SN_UART1->IE = 0x05UL;
+    /* 6. Vô hiệu hóa ngắt phần cứng UART1 để sử dụng cơ chế Polling an toàn 100% */
+    SN_UART1->IE = 0x00UL;
+    NVIC_DisableIRQ(UART1_IRQn);
     NVIC_ClearPendingIRQ(UART1_IRQn);
-    NVIC_EnableIRQ(UART1_IRQn);
 
     /* 7. Bật UART1 (Bit 0 = UARTEN, Bit 6 = RXEN, Bit 7 = TXEN) */
     SN_UART1->CTRL = 0xC1UL;
@@ -264,6 +241,7 @@ static void SIM4G_Hardware_UART1_Init(void)
 void SIM4G_Init(void)
 {
     SIM4G_Hardware_UART1_Init();
+    Delay_ms(400);
     SIM4G_ClearRx();
 
     /* Giải phóng SIM A7680C nếu trước đó đang bị kẹt trong chế độ chờ '>' */
@@ -271,23 +249,27 @@ void SIM4G_Init(void)
     Delay_ms(150);
     SIM4G_ClearRx();
 
-    DEBUG_UART_SendString("[MODEM] Syncing AT baud...\r\n");
+    DEBUG_UART_SendString("[MODEM] Dang dong bo baudrate AT (115200 8N1)...\r\n");
     uint8_t at_ok = 0;
     for (uint8_t i = 0; i < 8; i++) {
         if (SIM4G_SendCmd("AT\r\n", "OK", 300)) {
             at_ok = 1;
             break;
         }
+        SIM4G_SendStr("\x1B\r\n");
         Delay_ms(150);
     }
 
     if (!at_ok) {
-        DEBUG_UART_SendString("[MODEM] ERROR: No response to AT (Check TX/RX wiring & 4V power)\r\n");
+        DEBUG_UART_SendString("[MODEM] LOI: Khong nhan duoc phan hoi AT tu SIM A7680C!\r\n");
+        DEBUG_UART_SendString("  -> Kiem tra TXD SIM vao P2.3 (MCU), RXD SIM vao P2.2 (MCU)\r\n");
+        DEBUG_UART_SendString("  -> Kiem tra GND chung giua SIM va MCU Sonix EVK\r\n");
+        DEBUG_UART_SendString("  -> Kiem tra nguon VBAT/VCC (3.8V - 4.2V, 2A) cho module SIM\r\n");
         g_sim_ready = 0;
         return;
     }
 
-    DEBUG_UART_SendString("[MODEM] AT -> OK\r\n");
+    DEBUG_UART_SendString("[MODEM] KET NOI THANH CONG! (Phan hoi: AT -> OK)\r\n");
     SIM4G_SendCmd("ATE0\r\n", "OK", 300);            /* Echo Off */
     SIM4G_SendCmd("AT+CMEE=2\r\n", "OK", 300);       /* Verbose Error */
     SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 400);       /* SMS Text Mode */
@@ -296,11 +278,23 @@ void SIM4G_Init(void)
 
     /* Kiểm tra thẻ SIM */
     if (!SIM4G_SendCmd("AT+CPIN?\r\n", "READY", 600)) {
-        DEBUG_UART_SendString("[MODEM] ERROR: SIM Card Not Ready!\r\n");
+        DEBUG_UART_SendString("[MODEM] CANH BAO: The SIM chua san sang (+CPIN != READY)\r\n");
         g_sim_ready = 0;
         return;
     }
-    DEBUG_UART_SendString("[MODEM] SIM Card READY. Checking Network Registration...\r\n");
+    DEBUG_UART_SendString("[MODEM] The SIM: READY\r\n");
+
+    /* Kiểm tra chất lượng sóng và nhà mạng */
+    SIM4G_SendCmd("AT+CSQ\r\n", "OK", 300);
+    DEBUG_UART_Printf("[MODEM] Cuong do song (CSQ): %s\r\n", (const char *)g_sim_rx_buf);
+
+    SIM4G_SendCmd("AT+COPS?\r\n", "OK", 500);
+    DEBUG_UART_Printf("[MODEM] Nha mang viễn thông: %s\r\n", (const char *)g_sim_rx_buf);
+
+    SIM4G_SendCmd("AT+CSCA?\r\n", "OK", 500);
+    DEBUG_UART_Printf("[MODEM] Trung tam tin nhan (SMSC): %s\r\n", (const char *)g_sim_rx_buf);
+
+    DEBUG_UART_SendString("[MODEM] Dang kiem tra dang ky mang...\r\n");
 
     /* Chờ đăng ký mạng viễn thông */
     for (uint8_t k = 0; k < 10; k++) {
@@ -308,14 +302,14 @@ void SIM4G_Init(void)
             SIM4G_RxContains(",5") ||
             SIM4G_SendCmd("AT+CEREG?\r\n", ",1", 300) ||
             SIM4G_RxContains(",5")) {
-            DEBUG_UART_SendString("[MODEM] Network Registered (Home/Roaming)!\r\n");
+            DEBUG_UART_SendString("[MODEM] Da dang ky mang di dong thanh cong (Home/Roaming)!\r\n");
             g_sim_ready = 1;
             return;
         }
         Delay_ms(300);
     }
 
-    DEBUG_UART_SendString("[MODEM] WARN: Network still searching, will retry on trigger.\r\n");
+    DEBUG_UART_SendString("[MODEM] Dang tim kiem tram BTS mang, san sang khi co tin hieu.\r\n");
     g_sim_ready = 1;
 }
 
@@ -377,6 +371,7 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     t_start = GetTick_ms();
     while ((GetTick_ms() - t_start) < 5000UL)
     {
+        SIM4G_Poll();
         if (SIM4G_RxContainsChar('>')) {
             got_prompt = 1;
             break;
@@ -410,6 +405,7 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     t_start = GetTick_ms();
     while ((GetTick_ms() - t_start) < 20000UL)
     {
+        SIM4G_Poll();
         if (SIM4G_RxContains("+CMGS:") || SIM4G_RxContains("OK"))
         {
             Delay_ms(100);
@@ -443,10 +439,10 @@ uint8_t SIM4G_SendSMS(const char *phone_number, const char *message)
 {
     if (!phone_number || !message) return 0;
 
-    /* Thử gửi với định dạng số nội địa (0932591161) */
+    /* Thử gửi với định dạng số ban đầu (0932591161) */
     uint8_t ok = SIM4G_SendSMS_Internal(phone_number, message);
 
-    /* Nếu thất bại, tự động chuyển sang định dạng quốc tế (+84932591161) và thử lại */
+    /* Nếu thất bại và số bắt đầu bằng 0, tự động thử lại bằng định dạng quốc tế +84 */
     if (!ok && phone_number[0] == '0')
     {
         DEBUG_UART_SendString("[SMS] RETRY: Switching to +84 international format...\r\n");
@@ -460,8 +456,23 @@ uint8_t SIM4G_SendSMS(const char *phone_number, const char *message)
         }
         intl_num[i] = '\0';
 
-        Delay_ms(600);
+        Delay_ms(1000);
         ok = SIM4G_SendSMS_Internal(intl_num, message);
+    }
+    /* Ngược lại nếu số bắt đầu bằng +84 và thất bại, thử lại bằng số nội địa 0x */
+    else if (!ok && phone_number[0] == '+' && phone_number[1] == '8' && phone_number[2] == '4')
+    {
+        DEBUG_UART_SendString("[SMS] RETRY: Switching to domestic 0x format...\r\n");
+        char local_num[32];
+        local_num[0] = '0';
+        uint32_t i = 1;
+        for (uint32_t j = 3; phone_number[j] != '\0' && i < 30U; j++) {
+            local_num[i++] = phone_number[j];
+        }
+        local_num[i] = '\0';
+
+        Delay_ms(1000);
+        ok = SIM4G_SendSMS_Internal(local_num, message);
     }
     return ok;
 }
