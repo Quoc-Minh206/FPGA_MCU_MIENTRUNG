@@ -9,7 +9,7 @@ def main():
 
     print("=================================================================")
     print(f"[*] DANG LANG NGHE SU KIEN K1 TU FPGA TREN {port} @ {baud}")
-    print(f"[*] (Nhan nut K1 tren bo FPGA de kich hoat danh thuc MCU)")
+    print(f"[*] (Ban co the nhan nut K1 hoac S2 tren bo FPGA bat cu luc nao)")
     print("=================================================================\n")
 
     try:
@@ -21,11 +21,12 @@ def main():
     ser.reset_input_buffer()
 
     with open(log_file, "a", encoding="utf-8") as f:
-        f.write(f"\n--- PHIEN THEO DOI MOI: {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-        
+        f.write(f"\n--- PHIEN THEO DOI DAEMON: {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        f.flush()
+
         start_time = time.time()
-        # Chay lang nghe trong 120 giay (2 phut) de nguoi dung thoai mai bam nut K1
-        while (time.time() - start_time) < 120.0:
+        # Chay lien tuc trong 600 giay (10 phut)
+        while (time.time() - start_time) < 600.0:
             if ser.in_waiting > 0:
                 try:
                     raw = ser.readline()
@@ -39,14 +40,15 @@ def main():
                         f.flush()
 
                         if "GUI THANH CONG" in line:
-                            print("\n>>> [HOAN THANH] XAC NHAN GUI THANH CONG DEN SO 0792394699! <<<")
+                            print("\n>>> [HOAN THANH] XAC NHAN GUI THANH CONG DEN SO 0792394699! <<<\n")
+                            sys.stdout.flush()
                 except Exception as ex:
                     pass
             else:
                 time.sleep(0.01)
 
     ser.close()
-    print("\n[*] Ket thuc thoi gian lang nghe 120s.")
+    print("[*] Ket thuc phien lang nghe 10 phut.")
 
 if __name__ == "__main__":
     main()
