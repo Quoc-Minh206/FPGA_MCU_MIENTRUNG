@@ -188,15 +188,12 @@ static uint8_t Dispatch_Emergency_SMS(void)
         DEBUG_UART_SendString("[SMS] GPS: No Satellite Fix (Fix=0)\r\n");
     }
 
-    DEBUG_UART_SendString("[DBG] 1: calling LED_D11_4G_ON\r\n");
     /* Bật LED D11 báo trạng thái đang truyền 4G */
     LED_D11_4G_ON();
 
-    DEBUG_UART_SendString("[DBG] 2: calling SIM4G_SendSMS\r\n");
     /* Gửi tin nhắn SMS qua SIM A7680C */
     uint8_t ok = SIM4G_SendSMS(EMERGENCY_PHONE_NUMBER, sms_buffer);
 
-    DEBUG_UART_SendString("[DBG] 3: returned from SIM4G_SendSMS\r\n");
     LED_D11_4G_OFF();
 
     /* Khôi phục cứng chân P1.4 = 0V và P2.4 Pull-up ngay sau khi kết thúc gửi */
@@ -353,21 +350,22 @@ int main(void)
 
         /* D. TỰ ĐỘNG KIỂM THỬ KHÔNG CẦN CHỜ NGƯỜI DÙNG BẤM NÚT (AUTONOMOUS TESTS) */
         {
-            static uint8_t s_auto1_done = 0;
-            static uint8_t s_auto2_done = 0;
+            static uint32_t s_last_autotest_ms = 0;
+            static uint8_t s_test_count = 0;
 
-            if (!s_auto1_done && (now >= 18000UL)) {
-                s_auto1_done = 1;
+            /* Lần 1: Sau khi khởi động 10 giây (khi SIM đã sẵn sàng)
+             * Lần 2, 3: Định kỳ mỗi 25 giây sau lần trước (tổng cộng 3 lần test độc lập)
+             */
+            if ((s_test_count < 3) && g_sim_ready &&
+                ((s_test_count == 0 && now >= 10000UL) ||
+                 (s_test_count > 0 && (now - s_last_autotest_ms) >= 25000UL)))
+            {
+                s_test_count++;
+                s_last_autotest_ms = now;
                 DEBUG_UART_SendString("\r\n========================================\r\n");
-                DEBUG_UART_SendString(">>> [AUTO TEST #1] Emergency Routine at 18s <<<\r\n");
+                DEBUG_UART_Printf(">>> [AUTO TEST #%d] Kich hoat gui SMS tu dong den %s <<<\r\n", s_test_count, EMERGENCY_PHONE_NUMBER);
                 DEBUG_UART_SendString("========================================\r\n");
-                Execute_Emergency_Routine("Autonomous Boot Test #1");
-            }
-
-            if (!s_auto2_done && (now >= 55000UL)) {
-                s_auto2_done = 1;
-                DEBUG_UART_SendString("\r\n>>> [LENH PC] Kiem tra ket noi Module SIM A7680C... <<<\r\n");
-                Execute_Emergency_Routine("Autonomous Boot Test #2");
+                Execute_Emergency_Routine("Autonomous Periodic Test");
             }
         }
 
