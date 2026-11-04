@@ -4,11 +4,12 @@
  * Chức năng:
  *  1. Khởi tạo xung nhịp hệ thống và SysTick 1ms
  *  2. Khởi tạo ngoại vi GPS NEO-6M trên UART0 (9600 baud, P3.1 TX, P3.2 RX)
- *  3. Khởi tạo module 4G LTE SIM A7680C trên UART1 (115200 baud, P2.2 TX, P2.3 RX, Reset P2.1)
+ *  3. Khởi tạo module 4G LTE SIM A7680C trên UART1 (115200 baud, P2.2 TX, P2.3 RX)
  *  4. Cấu hình GPIO điều khiển LED chẩn đoán (D6, D7, D11) và Còi Buzzer (P3.0, P2.5)
  *  5. Đón nhận tín hiệu kích hoạt Trigger từ nút bấm SW3 onboard hoặc nút FPGA S1/S2 qua P2.9
- *  6. Thực thi mô hình AI TinyML Autoencoder khi nhận gói tin SPI từ cảm biến
- *  7. Khi kích hoạt tai nạn: Bật còi báo nhận lệnh, trích xuất tọa độ GPS và gửi SMS cứu hộ
+ *  6. Đón nhận nút bấm Hủy khẩn cấp / Reset trên P2.7 (cọc P27 gần SW6 - Bảng 5 constrain.pdf)
+ *  7. Thực thi mô hình AI TinyML Autoencoder khi nhận gói tin SPI từ cảm biến
+ *  8. Khi kích hoạt tai nạn: Bật còi báo nhận lệnh, trích xuất tọa độ GPS và gửi SMS cứu hộ
  *     tới số điện thoại người nhận: 0932591161, phát 3 tiếng bíp báo gửi thành công!
  *****************************************************************************/
 
@@ -78,31 +79,32 @@ static void Hardware_GPIO_Init(void)
      * 1. Cấu hình theo BẢNG 5 file constrain.pdf:
      *    - Còi Buzzer chủ động: Chân P2.5 (Cọc P25 gần SW4) - Output Push-Pull, Active High
      *    - Đèn LED cảnh báo đỏ: Chân P2.6 (Cọc P26 gần SW5) - Output Push-Pull, Active High
+     *    - Nút bấm hủy khẩn cấp / Reset: Chân P2.7 (Cọc P27 gần SW6) - Input Pull-up, Active Low
      */
     SN_GPIO2->MODE |= (1UL << 5) | (1UL << 6); // P2.5, P2.6: Output
     SN_GPIO2->BCLR  = (1UL << 5) | (1UL << 6); // Mặc định tắt Buzzer P2.5 (0V) và LED P2.6 (0V)
+
+    SN_GPIO2->MODE &= ~(1UL << 7);              // P2.7: Input (Nút bấm hủy khẩn cấp / Reset)
+    SN_GPIO2->CFG  &= ~(3UL << 14);             // Pull-up cho P2.7 (bits 15:14 = 00b)
 
     /* 
      * 2. Nhận tín hiệu WAKEUP_IRQ từ Pin 41 FPGA (theo BẢNG 1 file constrain.pdf):
      *    - P2.9: Cụm J7 Chân 5 (P29) -> Input kèm trở kéo xuống (Pull-down)
      *    - P2.8: Cụm J7 Chân 4 (dự phòng) -> Input kèm trở kéo xuống (Pull-down)
-     *    Khi FPGA không kích hoạt hoặc chưa cắm cáp, chân P2.9 luôn được kéo về 0V, chống nhiễu tuyệt đối.
      */
     SN_GPIO2->MODE &= ~((1UL << 8) | (1UL << 9));
-    SN_GPIO2->CFG = (SN_GPIO2->CFG & ~((3UL << 16) | (3UL << 18))) | ((1UL << 16) | (1UL << 18)); // Pull-down cho P2.8 và P2.9
+    SN_GPIO2->CFG = (SN_GPIO2->CFG & ~((3UL << 16) | (3UL << 18))) | ((1UL << 16) | (1UL << 18));
 
     /* 
      * 3. Nút bấm SW3 onboard bo MCU Sonix EVK (để test gửi tín hiệu tai nạn giả):
      *    - P1.4 (ROW0_P14): Cấu hình Output LOW (0V) để làm mass cho hàng phím 0
      *    - P1.5..P1.7: Cấu hình Input kèm trở kéo lên (Pull-up)
      *    - P2.4 (COL0_P24): Cấu hình Input kèm trở kéo lên (Pull-up: CFG bits 9:8 = 00b)
-     *    Khi bấm SW3: P2.4 nối với P1.4 (0V) -> DATA bit 4 = 0 (kích hoạt báo động test)
-     *    Khi nhả SW3: P2.4 kéo về 3.3V -> DATA bit 4 = 1
      */
     SN_GPIO1->MODE |= (1UL << 4);               // P1.4: Output
     SN_GPIO1->BCLR  = (1UL << 4);               // P1.4 = 0V
-    SN_GPIO1->MODE &= ~((1UL << 5) | (1UL << 6) | (1UL << 7)); // P1.5..P1.7: Input
-    SN_GPIO1->CFG  &= ~((3UL << 10) | (3UL << 12) | (3UL << 14)); // Pull-up cho P1.5..P1.7
+    SN_GPIO1->MODE &= ~((1UL << 5) | (1UL << 6) | (1UL << 7));
+    SN_GPIO1->CFG  &= ~((3UL << 10) | (3UL << 12) | (3UL << 14));
 
     SN_GPIO2->MODE &= ~(1UL << 4);              // P2.4: Input
     SN_GPIO2->CFG  &= ~(3UL << 8);              // CFG bits 9:8 = 00b (Pull-up chuẩn cho P2.4)
@@ -145,7 +147,7 @@ static uint8_t Dispatch_Emergency_SMS(void)
             sms_buffer[j++] = g_gps_coord[i++];
         }
 
-        const char *mid = "\nMaps: ";
+        const char *mid = "\nGoogle Maps: ";
         i = 0;
         while (mid[i] != '\0' && j < sizeof(sms_buffer) - 1) {
             sms_buffer[j++] = mid[i++];
@@ -189,13 +191,13 @@ int main(void)
     /* 2. Cấu hình GPIO chẩn đoán và còi cảnh báo */
     Hardware_GPIO_Init();
 
-    /* Đảm bảo tuyệt đối còi TẮT lúc cắm nguồn (KHÔNG KÊU CÒI KHI VỪA CẮM ĐIỆN) */
+    /* Đảm bảo tuyệt đối còi TẮT lúc cắm nguồn */
     BUZZER_OFF();
 
-    /* Nháy đèn D6 & D7 trong 200ms để xác nhận MCU đã nạp và khởi động thành công */
+    /* Phát 1 tiếng bíp ngắn 80ms và nháy LED để báo hiệu MCU khởi động / Reset thành công */
     LED_D6_ON();
     ALERT_LED_ON();
-    Delay_ms(200);
+    Buzzer_Beep(80);
     LED_D6_OFF();
     ALERT_LED_OFF();
     BUZZER_OFF();
@@ -206,7 +208,7 @@ int main(void)
     /* 4. Khởi tạo ngoại vi GPS NEO-6M trên UART0 */
     GPS_Init();
 
-    /* 5. Khởi tạo Module 4G LTE SIM A7680C trên UART1 (Tự động kích nguồn PWRKEY nếu đang tắt) */
+    /* 5. Khởi tạo Module 4G LTE SIM A7680C trên UART1 */
     SIM4G_Init();
 
     /* Đảm bảo còi và đèn cảnh báo đã TẮT trước khi vào vòng lặp chính */
@@ -248,8 +250,8 @@ int main(void)
                     GPS_Process();
                 }
 
-                /* Bíp 200ms báo đã nhận lệnh bấm nút test */
-                Buzzer_Beep(200);
+                /* Bíp 100ms báo đã nhận lệnh bấm nút test */
+                Buzzer_Beep(100);
 
                 /* Bật đèn cảnh báo trong quá trình gửi */
                 ALERT_LED_ON();
@@ -262,9 +264,9 @@ int main(void)
                 if (sms_ok) {
                     /* Bíp 3 tiếng ngắn (bíp-bíp-bíp) báo gửi tin nhắn SMS thành công! */
                     Buzzer_Beep(120);
-                    Delay_ms(100);
+                    Delay_ms(80);
                     Buzzer_Beep(120);
-                    Delay_ms(100);
+                    Delay_ms(80);
                     Buzzer_Beep(120);
                 } else {
                     /* Bíp 1 tiếng dài 600ms cảnh báo lỗi SIM hoặc chưa bắt sóng */
@@ -273,15 +275,15 @@ int main(void)
             }
         }
 
-        /* D. BẮT SỰ KIỆN XUNG TỪ FPGA (Pin 41 -> P2.9) KHI BẤM NÚT K1/K2 TRÊN BO FPGA:
+        /* D. BẮT SỰ KIỆN XUNG TỪ FPGA (Pin 41 -> P2.9) KHI BẤM NÚT S1/S2 TRÊN BO FPGA:
          */
         if (SN_GPIO2->DATA & (1UL << 9)) {
-            /* Chờ kết thúc xung 500ms của FPGA */
+            /* Chờ kết thúc xung của FPGA */
             while (SN_GPIO2->DATA & (1UL << 9)) {
                 GPS_Process();
             }
 
-            Buzzer_Beep(200);
+            Buzzer_Beep(100);
             ALERT_LED_ON();
 
             uint8_t sms_ok = Dispatch_Emergency_SMS();
@@ -290,16 +292,32 @@ int main(void)
 
             if (sms_ok) {
                 Buzzer_Beep(120);
-                Delay_ms(100);
+                Delay_ms(80);
                 Buzzer_Beep(120);
-                Delay_ms(100);
+                Delay_ms(80);
                 Buzzer_Beep(120);
             } else {
                 Buzzer_Beep(600);
             }
         }
 
-        /* E. KIỂM TRA GÓI TIN SPI TỪ FPGA NẾU CÓ DỮ LIỆU ĐẶC TRƯNG THỰC TẾ:
+        /* E. NÚT BẤM HỦY / RESET KHẨN CẤP (P2.7 CỌC P27 GẦN SW6 - BẢNG 5 CONSTRAIN.PDF): */
+        if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
+            Delay_ms(30);
+            if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
+                while ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
+                    GPS_Process();
+                }
+                BUZZER_OFF();
+                ALERT_LED_OFF();
+                /* Bíp 2 tiếng ngắn (bíp - bíp) báo đã Reset / Hủy thành công */
+                Buzzer_Beep(80);
+                Delay_ms(80);
+                Buzzer_Beep(80);
+            }
+        }
+
+        /* F. KIỂM TRA GÓI TIN SPI TỪ FPGA NẾU CÓ DỮ LIỆU ĐẶC TRƯNG THỰC TẾ:
          */
         if (g_spi_pkt_ready) {
             g_spi_pkt_ready = 0;
@@ -311,16 +329,18 @@ int main(void)
 
             float mse_score = tinyml_predict(&feat);
             if (tinyml_confirm_accident(feat.roll, mse_score, 50)) {
-                Buzzer_Beep(200);
+                Buzzer_Beep(100);
                 ALERT_LED_ON();
                 uint8_t sms_ok = Dispatch_Emergency_SMS();
                 ALERT_LED_OFF();
                 if (sms_ok) {
                     Buzzer_Beep(120);
-                    Delay_ms(100);
+                    Delay_ms(80);
                     Buzzer_Beep(120);
-                    Delay_ms(100);
+                    Delay_ms(80);
                     Buzzer_Beep(120);
+                } else {
+                    Buzzer_Beep(600);
                 }
             }
         }

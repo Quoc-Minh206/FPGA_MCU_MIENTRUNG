@@ -5,7 +5,6 @@
  *  - P2.2 (UTXD1) -> RXD SIM A7680C (Cụm J7 Chân 2 - Bảng 4 constrain.pdf)
  *  - P2.3 (URXD1) -> TXD SIM A7680C (Cụm J7 Chân 3 - Bảng 4 constrain.pdf)
  *  - Nguồn module SIM được cấp trực tiếp từ mạch nguồn IP5306 / Pin Li-ion.
- *  - TUYỆT ĐỐI KHÔNG can thiệp xung nguồn làm tắt module SIM đang chạy.
  *****************************************************************************/
 #include <SN32F400.h>
 #include "sim4g.h"
@@ -65,33 +64,28 @@ void SIM4G_ClearRx(void)
 }
 
 /*=============================  NGẮT UART1  ===============================*/
+/* Tuyệt đối không dùng vòng lặp while((ii&1)==0) không giới hạn để chống kẹt core */
 void UART1_IRQHandler(void)
 {
     uint32_t ii = SN_UART1->II;
-    uint32_t ls;
+    uint32_t ls = SN_UART1->LS;
+    (void)ii;
 
-    while ((ii & 0x01UL) == 0UL)            /* Có ngắt đang chờ             */
+    /* Nếu có lỗi đường truyền (Overrun, Parity, Framing, Break), đọc bỏ để xóa cờ */
+    if (ls & 0x8EUL) {
+        volatile uint32_t dummy = SN_UART1->RB;
+        (void)dummy;
+    }
+
+    /* Đọc cạn các byte đang có trong RX FIFO vào bộ đệm */
+    while (SN_UART1->LS & 0x01UL)
     {
-        ls = SN_UART1->LS;
-
-        /* Nếu có lỗi đường truyền (Overrun, Parity, Framing, Break), đọc bỏ để xóa cờ lỗi */
-        if (ls & 0x8EUL) {
-            volatile uint32_t dummy = SN_UART1->RB;
-            (void)dummy;
-        }
-
-        /* Đọc toàn bộ các byte có sẵn trong bộ đệm nhận (FIFO) */
-        while (SN_UART1->LS & 0x01UL)
+        uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
+        if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
         {
-            uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
-            if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
-            {
-                g_sim_rx_buf[g_sim_rx_len++] = (char)b;
-                g_sim_rx_buf[g_sim_rx_len] = '\0';
-            }
+            g_sim_rx_buf[g_sim_rx_len++] = (char)b;
+            g_sim_rx_buf[g_sim_rx_len] = '\0';
         }
-
-        ii = SN_UART1->II;
     }
 }
 
@@ -126,15 +120,15 @@ void SIM4G_Init(void)
     SN_UART1->CTRL = 0x01UL | (1UL << 6) | (1UL << 7);
 
     /* 7. Đồng bộ tốc độ truyền với module A7680C (Auto-baud sync) */
-    for (uint8_t i = 0; i < 5; i++) {
-        SIM4G_SendCmd("AT\r\n", "OK", 300);
-        Delay_ms(80);
+    for (uint8_t i = 0; i < 3; i++) {
+        SIM4G_SendCmd("AT\r\n", "OK", 200);
+        Delay_ms(50);
     }
 
     /* 8. Cấu hình chế độ SMS Text Mode */
-    SIM4G_SendCmd("ATE0\r\n", "OK", 400);
-    SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 500);
-    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 500);
+    SIM4G_SendCmd("ATE0\r\n", "OK", 300);
+    SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 400);
+    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 400);
     g_sim_ready = 1;
 }
 
@@ -185,8 +179,8 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     /* 1. Đảm bảo module sẵn sàng ở chế độ Text Mode */
     SIM4G_SendCmd("AT\r\n", "OK", 300);
     SIM4G_SendCmd("ATE0\r\n", "OK", 300);
-    SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 500);
-    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 500);
+    SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 400);
+    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 400);
 
     /* 2. Tạo lệnh AT+CMGS="<phone_number>"\r */
     cmd[0] = 'A'; cmd[1] = 'T'; cmd[2] = '+'; cmd[3] = 'C';
