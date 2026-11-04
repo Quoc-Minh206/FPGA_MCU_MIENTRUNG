@@ -127,20 +127,36 @@ void SIM4G_Init(void)
     /* 6. Bat bo phat va bo thu UART1 */
     SN_UART1->CTRL = 0x01UL | (1UL << 6) | (1UL << 7);
 
-    /* 7. Giu chan P2.1 (PWRKEY/Reset) o muc HIGH (3.3V) mac dinh, khong lam tat nguon module */
+    /* 7. Khoi tao chan dieu khien PWRKEY A7680C tren P2.1 */
     GPIO2_MODE |= (1UL << 1);
     GPIO2_BSET  = (1UL << 1);
-    Delay_ms(500);
 
-    /* 8. Kiem tra phan hoi AT */
+    /* 8. Kiem tra phan hoi AT tu A7680C. Neu chua chay, phat xung PWRKEY 1.2s de bat nguon */
     uint8_t at_ok = 0;
-    for (uint8_t retry = 0; retry < 5; retry++) {
-        if (SIM4G_SendCmd("AT\r\n", "OK", 500)) {
+    for (uint8_t retry = 0; retry < 3; retry++) {
+        if (SIM4G_SendCmd("AT\r\n", "OK", 400)) {
             at_ok = 1;
             break;
         }
-        Delay_ms(150);
+        Delay_ms(100);
     }
+
+    if (!at_ok) {
+        /* Keo PWRKEY xuong GND (Active-LOW) trong 1.2s de bat nguon module A7680C */
+        GPIO2_BCLR = (1UL << 1);
+        Delay_ms(1200);
+        GPIO2_BSET = (1UL << 1);
+        Delay_ms(2500); // Cho module khoi dong hoan tat va dang ky mang
+
+        for (uint8_t retry = 0; retry < 8; retry++) {
+            if (SIM4G_SendCmd("AT\r\n", "OK", 500)) {
+                at_ok = 1;
+                break;
+            }
+            Delay_ms(250);
+        }
+    }
+
     if (at_ok) {
         g_sim_ready = 1;
         SIM4G_SendCmd("ATE0\r\n", "OK", 500);
@@ -204,6 +220,21 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
             break;
         }
         Delay_ms(150);
+    }
+
+    if (!at_ok) {
+        /* Neu module dang ngu, thu phat xung PWRKEY 1.2s tren P2.1 de danh thuc */
+        GPIO2_BCLR = (1UL << 1);
+        Delay_ms(1200);
+        GPIO2_BSET = (1UL << 1);
+        Delay_ms(2500);
+        for (uint32_t k = 0; k < 5; k++) {
+            if (SIM4G_SendCmd("AT\r\n", "OK", 500)) {
+                at_ok = 1;
+                break;
+            }
+            Delay_ms(200);
+        }
     }
 
     if (!at_ok) {
