@@ -251,13 +251,15 @@ void SIM4G_Init(void)
 
     DEBUG_UART_SendString("[MODEM] Dang dong bo baudrate AT (115200 8N1)...\r\n");
     uint8_t at_ok = 0;
-    for (uint8_t i = 0; i < 8; i++) {
-        if (SIM4G_SendCmd("AT\r\n", "OK", 300)) {
+    SIM4G_SendStr("\r\n");
+    Delay_ms(50);
+    for (uint8_t i = 0; i < 16; i++) {
+        if (SIM4G_SendCmd("AT\r\n", "OK", 250)) {
             at_ok = 1;
             break;
         }
         SIM4G_SendStr("\x1B\r\n");
-        Delay_ms(150);
+        Delay_ms(100);
     }
 
     if (!at_ok) {

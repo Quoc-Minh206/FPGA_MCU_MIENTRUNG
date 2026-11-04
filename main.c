@@ -335,6 +335,16 @@ int main(void)
             }
         }
 
+        /* Tu dong ket noi lai SIM 4G moi 4 giay neu chua dong bo */
+        if (!g_sim_ready) {
+            static uint32_t s_last_sim_retry = 0;
+            if ((now - s_last_sim_retry) >= 4000UL) {
+                s_last_sim_retry = now;
+                DEBUG_UART_SendString("[SYS] Dang ket noi lai SIM A7680C (UART1)...\r\n");
+                SIM4G_Init();
+            }
+        }
+
         /* C. BẮT LỆNH ĐIỀU KHIỂN TỪ MÁY TÍNH QUA DEBUG UART (P3.11 RX) */
         if (DEBUG_UART_Available()) {
             char cmd = DEBUG_UART_ReadChar();
