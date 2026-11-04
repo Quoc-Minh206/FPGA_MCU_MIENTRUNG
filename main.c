@@ -4,13 +4,14 @@
  * Chức năng:
  *  1. Khởi tạo xung nhịp hệ thống và SysTick 1ms
  *  2. Khởi tạo ngoại vi GPS NEO-6M trên UART0 (9600 baud, P3.1 TX, P3.2 RX)
- *  3. Khởi tạo module 4G LTE SIM A7680C trên UART1 (115200 baud, P2.2 TX, P2.3 RX)
+ *  3. Khởi tạo module 4G LTE SIM A7680C trên UART1 (115200 baud, P2.2 TX, P2.3 RX, Reset P2.1)
  *  4. Cấu hình GPIO điều khiển LED chẩn đoán (D6, D7, D11) và Còi Buzzer (P3.0, P2.5)
  *  5. Đón nhận tín hiệu kích hoạt Trigger từ nút bấm SW3 onboard hoặc nút FPGA S1/S2 qua P2.9
  *  6. Đón nhận nút bấm Hủy khẩn cấp / Reset trên P2.7 (cọc P27 gần SW6 - Bảng 5 constrain.pdf)
  *  7. Thực thi mô hình AI TinyML Autoencoder khi nhận gói tin SPI từ cảm biến
- *  8. Khi kích hoạt tai nạn: Bật còi báo nhận lệnh, trích xuất tọa độ GPS và gửi SMS cứu hộ
- *     tới số điện thoại người nhận: 0932591161, phát 3 tiếng bíp báo gửi thành công!
+ *  8. Khi kích hoạt tai nạn: Hú còi báo hiệu tai nạn, trích xuất tọa độ GPS và gửi SMS cứu hộ
+ *     tới số điện thoại người nhận: 0932591161, phát 3 tiếng bíp báo gửi thành công,
+ *     sau đó tự động reset về trạng thái bình thường để CHO PHÉP BẤM GỬI LẠI NHIỀU LẦN!
  *****************************************************************************/
 
 #include <SN32F400.h>
@@ -28,6 +29,14 @@ volatile uint8_t  g_spi_pkt_ready = 0;
 volatile uint8_t  g_buzzer_enabled = 0;
 static volatile uint8_t s_tick_div = 0;
 
+/* Trạng thái hệ thống */
+typedef enum {
+    SYS_STATE_NORMAL = 0,
+    SYS_STATE_ACCIDENT_CONFIRMED,
+    SYS_STATE_ALERT_DISPATCHED
+} system_state_t;
+
+static system_state_t s_system_state = SYS_STATE_NORMAL;
 static uint32_t s_last_hb_ms = 0;
 
 /*=============================  SYSTICK & DELAY  ==========================*/
@@ -58,6 +67,19 @@ void Delay_ms(uint32_t ms)
     while ((g_tick_ms - start) < ms) {
         /* Duy trì xử lý GPS trong lúc delay */
         GPS_Process();
+
+        /* Nếu đang ở trạng thái báo động tai nạn, duy trì bíp còi báo hiệu:
+         * - Khi đang gửi SMS: Bíp dồn dập (150ms kêu / 250ms ngắt)
+         */
+        if (s_system_state != SYS_STATE_NORMAL) {
+            if (!g_sim_sms_sent) {
+                if ((g_tick_ms % 400) < 150) {
+                    BUZZER_ON();
+                } else {
+                    BUZZER_OFF();
+                }
+            }
+        }
     }
 }
 
@@ -79,13 +101,13 @@ static void Hardware_GPIO_Init(void)
      * 1. Cấu hình theo BẢNG 5 file constrain.pdf:
      *    - Còi Buzzer chủ động: Chân P2.5 (Cọc P25 gần SW4) - Output Push-Pull, Active High
      *    - Đèn LED cảnh báo đỏ: Chân P2.6 (Cọc P26 gần SW5) - Output Push-Pull, Active High
-     *    - Nút bấm hủy khẩn cấp / Reset: Chân P2.7 (Cọc P27 gần SW6) - Input Pull-up, Active Low
+     *    - Nút bấm khẩn cấp/hủy/Reset: Chân P2.7 (Cọc P27 gần SW6) - Input kèm trở kéo lên (Pull-up), Active Low
      */
     SN_GPIO2->MODE |= (1UL << 5) | (1UL << 6); // P2.5, P2.6: Output
     SN_GPIO2->BCLR  = (1UL << 5) | (1UL << 6); // Mặc định tắt Buzzer P2.5 (0V) và LED P2.6 (0V)
 
     SN_GPIO2->MODE &= ~(1UL << 7);              // P2.7: Input (Nút bấm hủy khẩn cấp / Reset)
-    SN_GPIO2->CFG  &= ~(3UL << 14);             // Pull-up cho P2.7 (bits 15:14 = 00b)
+    SN_GPIO2->CFG  &= ~(3UL << 14);             // CFG bits 15:14 = 00b (Pull-up cho P2.7)
 
     /* 
      * 2. Nhận tín hiệu WAKEUP_IRQ từ Pin 41 FPGA (theo BẢNG 1 file constrain.pdf):
@@ -178,6 +200,40 @@ static uint8_t Dispatch_Emergency_SMS(void)
     return ok;
 }
 
+/* Kích hoạt quy trình cứu hộ khẩn cấp hoàn chỉnh */
+static void Trigger_Emergency_SOS(void)
+{
+    /* 1. Bật đèn cảnh báo và còi hú báo hiệu tai nạn ngay lập tức */
+    ALERT_LED_ON();
+    BUZZER_ON();
+    s_system_state = SYS_STATE_ACCIDENT_CONFIRMED;
+    g_sim_sms_sent = 0;
+
+    /* 2. Gửi tin nhắn SMS ngay lập tức (trong lúc gửi, còi duy trì bíp cảnh báo) */
+    uint8_t ok = Dispatch_Emergency_SMS();
+
+    /* 3. Sau khi gửi xong: Tắt còi báo động, tắt đèn cảnh báo */
+    BUZZER_OFF();
+    ALERT_LED_OFF();
+
+    /* 4. Phát âm thanh phản hồi kết quả */
+    if (ok) {
+        /* Bíp 3 tiếng ngắn (bíp - bíp - bíp) báo gửi tin nhắn SMS thành công! */
+        Buzzer_Beep(120);
+        Delay_ms(80);
+        Buzzer_Beep(120);
+        Delay_ms(80);
+        Buzzer_Beep(120);
+    } else {
+        /* Bíp 1 tiếng dài 600ms nếu gửi không thành công */
+        Buzzer_Beep(600);
+    }
+
+    /* 5. TỰ ĐỘNG RESET VỀ TRẠNG THÁI BÌNH THƯỜNG ĐỂ CHO PHÉP BẤM GỬI LẠI TIẾP TỤC! */
+    s_system_state = SYS_STATE_NORMAL;
+    g_sim_sms_sent = 0;
+}
+
 /*=============================  HÀM MAIN  =================================*/
 int main(void)
 {
@@ -194,10 +250,10 @@ int main(void)
     /* Đảm bảo tuyệt đối còi TẮT lúc cắm nguồn */
     BUZZER_OFF();
 
-    /* Phát 1 tiếng bíp ngắn 80ms và nháy LED để báo hiệu MCU khởi động / Reset thành công */
+    /* Bíp 1 tiếng ngắn 100ms và nháy LED để báo hiệu MCU khởi động / Reset thành công */
     LED_D6_ON();
     ALERT_LED_ON();
-    Buzzer_Beep(80);
+    Buzzer_Beep(100);
     LED_D6_OFF();
     ALERT_LED_OFF();
     BUZZER_OFF();
@@ -214,6 +270,7 @@ int main(void)
     /* Đảm bảo còi và đèn cảnh báo đã TẮT trước khi vào vòng lặp chính */
     BUZZER_OFF();
     ALERT_LED_OFF();
+    s_system_state = SYS_STATE_NORMAL;
 
     s_last_hb_ms = g_tick_ms;
 
@@ -240,7 +297,8 @@ int main(void)
         }
 
         /* C. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK:
-         * Mỗi lần bấm nút SW3 là một lần phát âm báo và gửi tin nhắn SMS cứu hộ ngay lập tức!
+         * Mỗi lần bấm SW3 là một lần phát còi báo hiệu tai nạn và gửi SMS cứu hộ ngay lập tức!
+         * Bấm xong tự động reset để cho phép bấm lại lần 2, lần 3... liên tục!
          */
         if ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
             Delay_ms(30); /* Chống dội phím 30ms */
@@ -250,28 +308,8 @@ int main(void)
                     GPS_Process();
                 }
 
-                /* Bíp 100ms báo đã nhận lệnh bấm nút test */
-                Buzzer_Beep(100);
-
-                /* Bật đèn cảnh báo trong quá trình gửi */
-                ALERT_LED_ON();
-
-                /* Gửi tin nhắn SMS cứu hộ khẩn cấp tới 0932591161 */
-                uint8_t sms_ok = Dispatch_Emergency_SMS();
-
-                ALERT_LED_OFF();
-
-                if (sms_ok) {
-                    /* Bíp 3 tiếng ngắn (bíp-bíp-bíp) báo gửi tin nhắn SMS thành công! */
-                    Buzzer_Beep(120);
-                    Delay_ms(80);
-                    Buzzer_Beep(120);
-                    Delay_ms(80);
-                    Buzzer_Beep(120);
-                } else {
-                    /* Bíp 1 tiếng dài 600ms cảnh báo lỗi SIM hoặc chưa bắt sóng */
-                    Buzzer_Beep(600);
-                }
+                /* Kích hoạt quy trình SOS: Hú còi báo động -> Gửi SMS -> Báo 3 tiếng -> Reset sẵn sàng bấm tiếp */
+                Trigger_Emergency_SOS();
             }
         }
 
@@ -283,22 +321,7 @@ int main(void)
                 GPS_Process();
             }
 
-            Buzzer_Beep(100);
-            ALERT_LED_ON();
-
-            uint8_t sms_ok = Dispatch_Emergency_SMS();
-
-            ALERT_LED_OFF();
-
-            if (sms_ok) {
-                Buzzer_Beep(120);
-                Delay_ms(80);
-                Buzzer_Beep(120);
-                Delay_ms(80);
-                Buzzer_Beep(120);
-            } else {
-                Buzzer_Beep(600);
-            }
+            Trigger_Emergency_SOS();
         }
 
         /* E. NÚT BẤM HỦY / RESET KHẨN CẤP (P2.7 CỌC P27 GẦN SW6 - BẢNG 5 CONSTRAIN.PDF): */
@@ -310,6 +333,8 @@ int main(void)
                 }
                 BUZZER_OFF();
                 ALERT_LED_OFF();
+                s_system_state = SYS_STATE_NORMAL;
+                g_sim_sms_sent = 0;
                 /* Bíp 2 tiếng ngắn (bíp - bíp) báo đã Reset / Hủy thành công */
                 Buzzer_Beep(80);
                 Delay_ms(80);
@@ -329,19 +354,7 @@ int main(void)
 
             float mse_score = tinyml_predict(&feat);
             if (tinyml_confirm_accident(feat.roll, mse_score, 50)) {
-                Buzzer_Beep(100);
-                ALERT_LED_ON();
-                uint8_t sms_ok = Dispatch_Emergency_SMS();
-                ALERT_LED_OFF();
-                if (sms_ok) {
-                    Buzzer_Beep(120);
-                    Delay_ms(80);
-                    Buzzer_Beep(120);
-                    Delay_ms(80);
-                    Buzzer_Beep(120);
-                } else {
-                    Buzzer_Beep(600);
-                }
+                Trigger_Emergency_SOS();
             }
         }
     }
