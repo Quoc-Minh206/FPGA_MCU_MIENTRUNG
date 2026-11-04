@@ -14,7 +14,7 @@
 #include "tinyml_infer.h"
 #include "debug_uart.h"
 
-#define EMERGENCY_PHONE_NUMBER  "0792398699"
+#define EMERGENCY_PHONE_NUMBER  "+84792398699"
 
 /*=============================  BIẾN TOÀN CỤC  ============================*/
 volatile uint32_t g_tick_ms = 0;
@@ -163,23 +163,25 @@ static uint8_t Dispatch_Emergency_SMS(void)
     char sms_buffer[160];
     uint32_t len = 0;
 
-    /* Cắt ngắn nội dung vừa đủ chuẩn 160 ký tự GSM 7-bit để tránh lỗi ghép đa bản tin */
-    len = Append_Str(sms_buffer, sizeof(sms_buffer), len, "SOS TAI NAN XE MAY!\n");
+        /*
+     * LUU Y VE BO LOC TIN NHAN TAI VIET NAM (Nghi dinh 91/2020/ND-CP):
+     * Cac nha mang (Viettel, MobiFone, VinaPhone) chan toan bo tin nhan ca nhan co link URL.
+     * Do do, chi gui van ban thuan va toa do chuan, khong kem link URL https://
+     */
+    len = Append_Str(sms_buffer, sizeof(sms_buffer), len, "SOS TAI NAN XE MAY! ");
 
     if (g_gps.fix_valid) {
         len = Append_Str(sms_buffer, sizeof(sms_buffer), len, "Toa do: ");
         len = Append_Str(sms_buffer, sizeof(sms_buffer), len, g_gps_coord);
-        len = Append_Str(sms_buffer, sizeof(sms_buffer), len, "\nMaps: ");
-        len = Append_Str(sms_buffer, sizeof(sms_buffer), len, g_gps_maps_link);
     } else {
         if (g_gps_coord[0] != '\0' && g_gps_coord[0] != 'N') {
             len = Append_Str(sms_buffer, sizeof(sms_buffer), len, "Toa do: ");
             len = Append_Str(sms_buffer, sizeof(sms_buffer), len, g_gps_coord);
         } else {
-            len = Append_Str(sms_buffer, sizeof(sms_buffer), len,
-                             "GPS: Chua khoa ve tinh (Fix=0). Can cuu ho khan cap!");
+            len = Append_Str(sms_buffer, sizeof(sms_buffer), len, "GPS: Chua khoa ve tinh");
         }
     }
+    len = Append_Str(sms_buffer, sizeof(sms_buffer), len, ". Xin ho tro khan cap!");
 
     DEBUG_UART_SendString("[SMS] START: Preparing to dispatch emergency SMS...\r\n");
     if (g_gps.fix_valid) {
@@ -254,7 +256,7 @@ int main(void)
     DEBUG_UART_SendString("\r\n========================================\r\n");
     DEBUG_UART_SendString("   HE THONG PHAT HIEN TAI NAN XE MAY\r\n");
     DEBUG_UART_SendString("   MCU: SONiX SN32F407 | FPGA: GW1NSR-4C\r\n");
-    DEBUG_UART_SendString("   So dien thoai cuu ho: 0792398699\r\n");
+    DEBUG_UART_SendString("   So dien thoai cuu ho: +84792398699\r\n");
     DEBUG_UART_SendString("========================================\r\n");
 
     /* 2. Khởi tạo SysTick ngắt 2kHz (IHRC 12MHz / 2000 = 6000 chu kỳ) */

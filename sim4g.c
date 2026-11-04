@@ -273,8 +273,6 @@ void SIM4G_Init(void)
     SIM4G_SendCmd("ATE0\r\n", "OK", 300);            /* Echo Off */
     SIM4G_SendCmd("AT+CMEE=2\r\n", "OK", 300);       /* Verbose Error */
     SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 400);       /* SMS Text Mode */
-    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 400); /* GSM 7-bit charset */
-    SIM4G_SendCmd("AT+CSMP=17,167,0,0\r\n", "OK", 400);
 
     /* Kiểm tra thẻ SIM */
     if (!SIM4G_SendCmd("AT+CPIN?\r\n", "READY", 600)) {
@@ -345,8 +343,6 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     /* 3. Thiết lập lại cấu hình SMS Text Mode trước MỖI lần gửi */
     SIM4G_SendCmd("ATE0\r\n", "OK", 250);
     SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 350);
-    SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 350);
-    SIM4G_SendCmd("AT+CSMP=17,167,0,0\r\n", "OK", 350);
 
     /* 4. Đóng gói lệnh: AT+CMGS="<phone_number>"\r */
     cmd[0] = 'A'; cmd[1] = 'T'; cmd[2] = '+'; cmd[3] = 'C';
