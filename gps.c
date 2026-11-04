@@ -378,16 +378,16 @@ void UART0_IRQHandler(void)
 {
     uint32_t ii, ls;
     uint16_t next;
+    uint32_t guard = 32;
 
-    ii = SN_UART0->II;
-    while ((ii & 0x01UL) == 0UL)            /* bit0 = 0 -> co ngat dang cho */
+    while (((ii = SN_UART0->II) & 0x01UL) == 0UL && (--guard > 0))
     {
-        switch ((ii >> 1) & 0x07UL)
+        uint32_t intid = (ii >> 1) & 0x07UL;
+        switch (intid)
         {
         case 3:                             /* RLS: loi duong truyen        */
             ls = SN_UART0->LS;
             if (ls & 0x9EUL) g_gps.uart_err++;
-            (void)SN_UART0->RB;
             break;
 
         case 2:                             /* RDA                          */
@@ -400,13 +400,17 @@ void UART0_IRQHandler(void)
                 if (next != s_tail) { s_ring[s_head] = b; s_head = next; }
                 else                { g_gps.uart_err++; }   /* tran bo dem */
             }
+            if (intid == 6) {
+                (void)SN_UART0->RB;
+            }
             break;
 
         default:
             (void)SN_UART0->LS;
+            (void)SN_UART0->RB;
+            guard = 0;
             break;
         }
-        ii = SN_UART0->II;
     }
 }
 

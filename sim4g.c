@@ -100,38 +100,40 @@ void SIM4G_ClearRx(void)
 /*=============================  NGẮT UART1  ===============================*/
 void UART1_IRQHandler(void)
 {
-    uint32_t ii = SN_UART1->II;
-    uint32_t ls;
+    uint32_t ii;
+    uint32_t guard = 32; /* Tối đa 32 lần lặp, chống kẹt CPU tuyệt đối */
 
-    while ((ii & 0x01UL) == 0UL)
+    while (((ii = SN_UART1->II) & 0x01UL) == 0UL && (--guard > 0))
     {
-        switch ((ii >> 1) & 0x07UL)
+        uint32_t intid = (ii >> 1) & 0x07UL;
+        switch (intid)
         {
-        case 3: /* RLS */
-            ls = SN_UART1->LS;
-            (void)ls;
-            (void)SN_UART1->RB;
+        case 3: /* RLS: Lỗi đường truyền (OE, PE, FE, BI) */
+            (void)SN_UART1->LS; /* Đọc LS để xóa cờ lỗi */
             break;
 
         case 2: /* RDA */
-        case 6: /* CTO */
+        case 6: /* CTO: Character Timeout */
             while (SN_UART1->LS & 0x01UL)
             {
                 uint8_t b = (uint8_t)(SN_UART1->RB & 0xFFUL);
-                if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
+                if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 2))
                 {
                     g_sim_rx_buf[g_sim_rx_len++] = (char)b;
                     g_sim_rx_buf[g_sim_rx_len] = '\0';
                 }
+            }
+            if (intid == 6) {
+                (void)SN_UART1->RB; /* Đảm bảo cờ CTO được xóa sạch */
             }
             break;
 
         default:
             (void)SN_UART1->LS;
             (void)SN_UART1->RB;
+            guard = 0; /* Thoát ngay lập tức nếu gặp interrupt khác */
             break;
         }
-        ii = SN_UART1->II;
     }
 }
 

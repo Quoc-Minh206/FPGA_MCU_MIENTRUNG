@@ -44,9 +44,12 @@ void SysTick_Handler(void)
         g_tick_ms++;
     }
 
-    /* Tạo xung âm thanh 1000 Hz cho còi thạch anh onboard PZ1 (P3.0) */
+    /* Tạo xung âm thanh 1000 Hz cho còi thạch anh onboard PZ1 (P3.0) - Dùng BSET/BCLR tránh xung đột Port 3 */
+    static uint8_t s_pz1 = 0;
     if (g_buzzer_enabled) {
-        SN_GPIO3->DATA ^= (1UL << 0);
+        s_pz1 ^= 1;
+        if (s_pz1) SN_GPIO3->BSET = (1UL << 0);
+        else       SN_GPIO3->BCLR = (1UL << 0);
     } else {
         SN_GPIO3->BCLR = (1UL << 0);
     }
@@ -359,22 +362,8 @@ int main(void)
             }
         }
 
-        /* F. NÚT BẤM HỦY / RESET KHẨN CẤP (P2.7 CỌC P27 GẦN SW6) */
-        if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
-            Delay_ms(50);
-            if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
-                DEBUG_UART_SendString("[CANCEL] SW6 PRESSED (Emergency Aborted / Reset)\r\n");
-                uint32_t cancel_start = GetTick_ms();
-                while (((SN_GPIO2->DATA & (1UL << 7)) == 0) && ((GetTick_ms() - cancel_start) < 1500)) {
-                    GPS_Process();
-                }
-                BUZZER_OFF();
-                ALERT_LED_OFF();
-                Buzzer_Beep(80);
-                Delay_ms(80);
-                Buzzer_Beep(80);
-            }
-        }
+        /* F. NÚT BẤM HỦY / RESET KHẨN CẤP (P2.7): Tắt để tránh xung đột ma trận phím onboard */
+        /* (Để hệ thống luôn tập trung phục vụ nút báo động khẩn cấp SW3 và xung FPGA) */
 
         /* G. KIỂM TRA GÓI TIN SPI TỪ FPGA NẾU CÓ DỮ LIỆU ĐẶC TRƯNG THỰC TẾ */
         if (g_spi_pkt_ready) {
