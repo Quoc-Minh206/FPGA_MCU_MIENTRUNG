@@ -6,10 +6,13 @@
  *  2. Khởi tạo ngoại vi GPS NEO-6M trên UART0 (9600 baud, P3.1 TX, P3.2 RX)
  *  3. Khởi tạo module 4G LTE SIM A7680C trên UART1 (115200 baud, P2.2 TX, P2.3 RX)
  *  4. Cấu hình GPIO điều khiển LED chẩn đoán (D6, D7, D11) và Còi Buzzer (P3.0, P2.5)
- *  5. Đón nhận tín hiệu kích hoạt Trigger từ nút bấm SW3 onboard hoặc nút FPGA S1/S2 qua P2.9
- *  6. Đón nhận nút bấm Hủy khẩn cấp / Reset trên P2.7 (cọc P27 gần SW6 - Bảng 5 constrain.pdf)
+ *  5. Đón nhận tín hiệu kích hoạt Trigger từ:
+ *     - Nút bấm SW3 onboard bo MCU Sonix
+ *     - Nút FPGA S1/S2 qua Pin 41 -> P2.9 / P2.8 MCU
+ *     - Lệnh UART từ máy tính qua P3.11 ('t' / '1' để tự động kích hoạt test)
+ *  6. Đón nhận nút bấm Hủy khẩn cấp / Reset trên P2.7 (cọc P27 gần SW6)
  *  7. Thực thi mô hình AI TinyML Autoencoder khi nhận gói tin SPI từ cảm biến
- *  8. Khi kích hoạt tai nạn: Bật còi báo nhận lệnh, trích xuất tọa độ GPS và gửi SMS cứu hộ
+ *  8. Khi kích hoạt tai nạn: Bật còi báo, trích xuất tọa độ GPS và gửi SMS cứu hộ
  *     tới số điện thoại người nhận: 0932591161, phát 3 tiếng bíp báo gửi thành công!
  *****************************************************************************/
 
@@ -58,7 +61,6 @@ void Delay_ms(uint32_t ms)
 {
     uint32_t start = g_tick_ms;
     while ((g_tick_ms - start) < ms) {
-        /* Duy trì xử lý GPS trong lúc delay */
         GPS_Process();
     }
 }
@@ -84,9 +86,9 @@ static void Hardware_GPIO_Init(void)
      *    - Nút bấm hủy khẩn cấp / Reset: Chân P2.7 (Cọc P27 gần SW6) - Input Pull-up, Active Low
      */
     SN_GPIO2->MODE |= (1UL << 5) | (1UL << 6); // P2.5, P2.6: Output
-    SN_GPIO2->BCLR  = (1UL << 5) | (1UL << 6); // Mặc định tắt Buzzer P2.5 (0V) và LED P2.6 (0V)
+    SN_GPIO2->BCLR  = (1UL << 5) | (1UL << 6); // Tắt Buzzer P2.5 (0V) và LED P2.6 (0V)
 
-    SN_GPIO2->MODE &= ~(1UL << 7);              // P2.7: Input (Nút bấm hủy khẩn cấp / Reset)
+    SN_GPIO2->MODE &= ~(1UL << 7);              // P2.7: Input
     SN_GPIO2->CFG  &= ~(3UL << 14);             // Pull-up cho P2.7 (bits 15:14 = 00b)
 
     /* 
@@ -109,7 +111,7 @@ static void Hardware_GPIO_Init(void)
     SN_GPIO1->CFG  &= ~((3UL << 10) | (3UL << 12) | (3UL << 14));
 
     SN_GPIO2->MODE &= ~(1UL << 4);              // P2.4: Input
-    SN_GPIO2->CFG  &= ~(3UL << 8);              // CFG bits 9:8 = 00b (Pull-up chuẩn cho P2.4)
+    SN_GPIO2->CFG  &= ~(3UL << 8);              // Pull-up chuẩn cho P2.4
 
     /* P2.10 (INT_P210): Cấu hình Input pull-up */
     SN_GPIO2->MODE &= ~(1UL << 10);
@@ -187,16 +189,51 @@ static uint8_t Dispatch_Emergency_SMS(void)
     return ok;
 }
 
+/* Thực thi chu trình kích hoạt khẩn cấp khi có sự kiện (nút nhấn / FPGA / UART) */
+static void Execute_Emergency_Routine(const char *source_desc)
+{
+    DEBUG_UART_Printf("[EMERGENCY] Triggered by: %s\r\n", source_desc);
+
+    /* Bíp 100ms báo đã nhận lệnh */
+    Buzzer_Beep(100);
+
+    /* Bật đèn cảnh báo trong quá trình gửi */
+    ALERT_LED_ON();
+
+    /* Gửi tin nhắn SMS cứu hộ khẩn cấp tới 0932591161 */
+    uint8_t sms_ok = Dispatch_Emergency_SMS();
+
+    ALERT_LED_OFF();
+
+    if (sms_ok) {
+        DEBUG_UART_SendString("[SMS] Result: SUCCESS (3 beeps emitted)\r\n");
+        /* Bíp 3 tiếng ngắn (bíp-bíp-bíp) báo gửi tin nhắn SMS thành công! */
+        Buzzer_Beep(120);
+        Delay_ms(80);
+        Buzzer_Beep(120);
+        Delay_ms(80);
+        Buzzer_Beep(120);
+    } else {
+        DEBUG_UART_SendString("[SMS] Result: FAILED (Long error beep emitted)\r\n");
+        /* Bíp 1 tiếng dài 600ms cảnh báo lỗi SIM hoặc chưa bắt sóng */
+        Buzzer_Beep(600);
+    }
+}
+
 /*=============================  HÀM MAIN  =================================*/
 int main(void)
 {
-    /* Vô hiệu hóa Watchdog và LVD reset trong quá trình khởi động để chống treo/reset bất ngờ */
+    /* Vô hiệu hóa Watchdog và LVD reset trong quá trình khởi động */
     WDT_CFG = 0x5AFA0000UL;
     SYS0_LVDCTRL = 0;
 
     /* 1. Khởi tạo UART Debug trên P3.10 TX, P3.11 RX (115200 8N1) */
     DEBUG_UART_Init();
     DEBUG_UART_SendString("\r\n========================================\r\n");
+    DEBUG_UART_SendString("   HE THONG PHAT HIEN TAI NAN XE MAY\r\n");
+    DEBUG_UART_SendString("   MCU: SONiX SN32F407 | FPGA: GW1NSR-4C\r\n");
+    DEBUG_UART_SendString("   So dien thoai cuu ho: 0932591161\r\n");
+    DEBUG_UART_SendString("========================================\r\n");
     DEBUG_UART_SendString("[BOOT] SONiX SN32F407 Booting...\r\n");
     DEBUG_UART_SendString("[DEBUG_UART] P3.10 TX / P3.11 RX (115200 8N1) OK\r\n");
 
@@ -264,121 +301,88 @@ int main(void)
             }
         }
 
-        /* Gửi nhịp tim UART định kỳ mỗi 2000ms để quan sát hệ thống trên COM10 */
+        /* Gửi nhịp tim UART định kỳ mỗi 2000ms để quan sát hệ thống trên COM */
         {
             static uint32_t s_last_uart_hb = 0;
             if ((now - s_last_uart_hb) >= 2000) {
                 s_last_uart_hb = now;
-                DEBUG_UART_Printf("[SYS] Heartbeat | Tick: %u ms | GPS Fix: %d | SIM: %d\r\n",
-                                  now, g_gps.fix_valid, g_sim_ready);
+                DEBUG_UART_Printf("[SYS] Heartbeat | Tick: %u ms | GPS Fix: %d (Sats: %u) | SIM Ready: %d\r\n",
+                                  now, g_gps.fix_valid, g_gps.satellites, g_sim_ready);
             }
         }
 
-        /* C. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK:
+        /* C. BẮT LỆNH ĐIỀU KHIỂN TỪ MÁY TÍNH QUA DEBUG UART (P3.11 RX) */
+        if (DEBUG_UART_Available()) {
+            char cmd = DEBUG_UART_ReadChar();
+            if (cmd == 't' || cmd == 'T' || cmd == '1') {
+                Execute_Emergency_Routine("PC Serial Command ('t')");
+            } else if (cmd == 's' || cmd == 'S') {
+                DEBUG_UART_Printf("[STATUS] Tick=%u ms, GPS Fix=%d, Sats=%u, Lat=%s, Lon=%s, SIM=%d\r\n",
+                                  now, g_gps.fix_valid, g_gps.satellites,
+                                  g_gps.latitude, g_gps.longitude, g_sim_ready);
+            }
+        }
+
+        /* D. BẮT SỰ KIỆN NÚT BẤM TEST SW3 (P2.4) TRÊN BO MẠCH SONIX EVK:
          * Mỗi lần bấm nút SW3 là một lần phát âm báo và gửi tin nhắn SMS cứu hộ ngay lập tức!
          */
         if ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
             Delay_ms(30); /* Chống dội phím 30ms */
             if ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
                 DEBUG_UART_SendString("[BUTTON] SW3 PRESSED (Test Emergency Trigger)\r\n");
-                /* FIX FINDING-01: Đợi người dùng thả phím SW3 ra kèm TIMEOUT an toàn (tối đa 2.5s) */
+                /* Đợi người dùng thả phím SW3 ra kèm TIMEOUT an toàn (tối đa 1.5s) */
                 uint32_t hold_start = GetTick_ms();
-                while (((SN_GPIO2->DATA & (1UL << 4)) == 0) && ((GetTick_ms() - hold_start) < 2500)) {
+                while (((SN_GPIO2->DATA & (1UL << 4)) == 0) && ((GetTick_ms() - hold_start) < 1500)) {
                     GPS_Process();
                 }
                 DEBUG_UART_SendString("[BUTTON] SW3 Released\r\n");
 
-                /* FIX FINDING-07: Cooldown 5 giây chống spam nhiều SMS khi bấm liên tục */
-                if ((now - s_last_sms_trigger_ms) >= 5000 || s_last_sms_trigger_ms == 0) {
+                /* Cooldown 3 giây chống spam nhiều SMS khi bấm liên tục */
+                if ((now - s_last_sms_trigger_ms) >= 3000 || s_last_sms_trigger_ms == 0) {
                     s_last_sms_trigger_ms = now;
-
-                    /* Bíp 100ms báo đã nhận lệnh bấm nút test */
-                    Buzzer_Beep(100);
-
-                    /* Bật đèn cảnh báo trong quá trình gửi */
-                    ALERT_LED_ON();
-
-                    /* Gửi tin nhắn SMS cứu hộ khẩn cấp tới 0932591161 */
-                    uint8_t sms_ok = Dispatch_Emergency_SMS();
-
-                    ALERT_LED_OFF();
-
-                    if (sms_ok) {
-                        DEBUG_UART_SendString("[SMS] Result: SUCCESS (3 beeps emitted)\r\n");
-                        /* Bíp 3 tiếng ngắn (bíp-bíp-bíp) báo gửi tin nhắn SMS thành công! */
-                        Buzzer_Beep(120);
-                        Delay_ms(80);
-                        Buzzer_Beep(120);
-                        Delay_ms(80);
-                        Buzzer_Beep(120);
-                    } else {
-                        DEBUG_UART_SendString("[SMS] Result: FAILED (Long error beep emitted)\r\n");
-                        /* Bíp 1 tiếng dài 600ms cảnh báo lỗi SIM hoặc chưa bắt sóng */
-                        Buzzer_Beep(600);
-                    }
+                    Execute_Emergency_Routine("SW3 Onboard Button");
                 } else {
-                    DEBUG_UART_SendString("[BUTTON] Cooldown Active (< 5s), ignoring trigger\r\n");
-                    /* Đang trong thời gian Cooldown: Bíp 1 tiếng ngắn 50ms từ chối spam */
+                    DEBUG_UART_SendString("[BUTTON] Cooldown Active (< 3s), ignoring trigger\r\n");
                     Buzzer_Beep(50);
                 }
             }
         }
 
-        /* D. BẮT SỰ KIỆN XUNG TỪ FPGA (Pin 41 -> P2.9) KHI BẤM NÚT S1/S2 TRÊN BO FPGA:
-         */
-        if (SN_GPIO2->DATA & (1UL << 9)) {
-            /* FIX FINDING-09: Thêm lọc chống dội 30ms cho chân P2.9 */
+        /* E. BẮT SỰ KIỆN XUNG TỪ FPGA (Pin 41 -> P2.9 hoặc P2.8) KHI BẤM NÚT S1/S2 TRÊN BO FPGA: */
+        if ((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) {
             Delay_ms(30);
-            if (SN_GPIO2->DATA & (1UL << 9)) {
-                DEBUG_UART_SendString("[FPGA] Pin 41 -> P2.9 Pulse Detected!\r\n");
-                /* Chờ kết thúc xung của FPGA kèm timeout an toàn tối đa 2000ms */
+            if ((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) {
+                DEBUG_UART_SendString("[FPGA] Signal detected from FPGA (Pin 41 -> P2.9/P2.8)!\r\n");
                 uint32_t pulse_start = GetTick_ms();
-                while ((SN_GPIO2->DATA & (1UL << 9)) && ((GetTick_ms() - pulse_start) < 2000)) {
+                while (((SN_GPIO2->DATA & (1UL << 9)) || (SN_GPIO2->DATA & (1UL << 8))) && ((GetTick_ms() - pulse_start) < 1500)) {
                     GPS_Process();
                 }
 
-                if ((now - s_last_sms_trigger_ms) >= 5000 || s_last_sms_trigger_ms == 0) {
+                if ((now - s_last_sms_trigger_ms) >= 3000 || s_last_sms_trigger_ms == 0) {
                     s_last_sms_trigger_ms = now;
-                    Buzzer_Beep(100);
-                    ALERT_LED_ON();
-
-                    uint8_t sms_ok = Dispatch_Emergency_SMS();
-
-                    ALERT_LED_OFF();
-
-                    if (sms_ok) {
-                        Buzzer_Beep(120);
-                        Delay_ms(80);
-                        Buzzer_Beep(120);
-                        Delay_ms(80);
-                        Buzzer_Beep(120);
-                    } else {
-                        Buzzer_Beep(600);
-                    }
+                    Execute_Emergency_Routine("FPGA S1/S2 Trigger (Pin 41)");
                 }
             }
         }
 
-        /* E. NÚT BẤM HỦY / RESET KHẨN CẤP (P2.7 CỌC P27 GẦN SW6 - BẢNG 5 CONSTRAIN.PDF): */
+        /* F. NÚT BẤM HỦY / RESET KHẨN CẤP (P2.7 CỌC P27 GẦN SW6) */
         if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
-            Delay_ms(30);
+            Delay_ms(50);
             if ((SN_GPIO2->DATA & (1UL << 7)) == 0) {
                 DEBUG_UART_SendString("[CANCEL] SW6 PRESSED (Emergency Aborted / Reset)\r\n");
                 uint32_t cancel_start = GetTick_ms();
-                while (((SN_GPIO2->DATA & (1UL << 7)) == 0) && ((GetTick_ms() - cancel_start) < 2500)) {
+                while (((SN_GPIO2->DATA & (1UL << 7)) == 0) && ((GetTick_ms() - cancel_start) < 1500)) {
                     GPS_Process();
                 }
                 BUZZER_OFF();
                 ALERT_LED_OFF();
-                /* Bíp 2 tiếng ngắn (bíp - bíp) báo đã Reset / Hủy thành công */
                 Buzzer_Beep(80);
                 Delay_ms(80);
                 Buzzer_Beep(80);
             }
         }
 
-        /* F. KIỂM TRA GÓI TIN SPI TỪ FPGA NẾU CÓ DỮ LIỆU ĐẶC TRƯNG THỰC TẾ:
-         */
+        /* G. KIỂM TRA GÓI TIN SPI TỪ FPGA NẾU CÓ DỮ LIỆU ĐẶC TRƯNG THỰC TẾ */
         if (g_spi_pkt_ready) {
             g_spi_pkt_ready = 0;
             tinyml_features_t feat;
@@ -389,21 +393,9 @@ int main(void)
 
             float mse_score = tinyml_predict(&feat);
             if (tinyml_confirm_accident(feat.roll, mse_score, 50)) {
-                if ((now - s_last_sms_trigger_ms) >= 5000 || s_last_sms_trigger_ms == 0) {
+                if ((now - s_last_sms_trigger_ms) >= 3000 || s_last_sms_trigger_ms == 0) {
                     s_last_sms_trigger_ms = now;
-                    Buzzer_Beep(100);
-                    ALERT_LED_ON();
-                    uint8_t sms_ok = Dispatch_Emergency_SMS();
-                    ALERT_LED_OFF();
-                    if (sms_ok) {
-                        Buzzer_Beep(120);
-                        Delay_ms(80);
-                        Buzzer_Beep(120);
-                        Delay_ms(80);
-                        Buzzer_Beep(120);
-                    } else {
-                        Buzzer_Beep(600);
-                    }
+                    Execute_Emergency_Routine("TinyML Accident Detection");
                 }
             }
         }

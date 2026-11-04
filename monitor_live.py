@@ -2,7 +2,7 @@ import serial
 import time
 import sys
 
-PORT = 'COM10'
+PORT = 'COM8'
 BAUD = 115200
 LOG_FILE = r'C:\Users\Lenovo\Downloads\main_project\uart_live.log'
 

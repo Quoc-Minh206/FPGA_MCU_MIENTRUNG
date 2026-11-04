@@ -32,6 +32,8 @@ static void delay_cycles(uint32_t count)
     );
 }
 
+#define UART_BIT_DELAY() delay_cycles(23)
+
 void DEBUG_UART_Init(void)
 {
     /* 1. Cấu hình P3.10 làm Output Push-Pull (TX) */
@@ -57,21 +59,36 @@ void DEBUG_UART_SendChar(char c)
 
     /* 1. Start Bit (Mức LOW) */
     SN_GPIO3->BCLR = (1UL << 10);
-    delay_cycles(31);
+    UART_BIT_DELAY();
 
-    /* 2. 8 Data Bits (LSB xuất trước) */
-    for (int i = 0; i < 8; i++) {
-        if (c & (1 << i)) {
-            SN_GPIO3->BSET = (1UL << 10);
-        } else {
-            SN_GPIO3->BCLR = (1UL << 10);
-        }
-        delay_cycles(31);
-    }
+    /* 2. 8 Data Bits (LSB xuất trước, unrolled chống lệch nhịp) */
+    if (c & 0x01) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
+
+    if (c & 0x02) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
+
+    if (c & 0x04) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
+
+    if (c & 0x08) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
+
+    if (c & 0x10) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
+
+    if (c & 0x20) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
+
+    if (c & 0x40) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
+
+    if (c & 0x80) SN_GPIO3->BSET = (1UL << 10); else SN_GPIO3->BCLR = (1UL << 10);
+    UART_BIT_DELAY();
 
     /* 3. Stop Bit (Mức HIGH) */
     SN_GPIO3->BSET = (1UL << 10);
-    delay_cycles(31);
+    UART_BIT_DELAY();
 
     __enable_irq();
 }
@@ -162,20 +179,20 @@ char DEBUG_UART_ReadChar(void)
     if (!DEBUG_UART_Available()) return 0;
 
     __disable_irq();
-    /* Canh giữa Start bit (~52 chu kỳ) */
-    delay_cycles(15);
+    /* Canh giữa Start bit (~52 chu kỳ): delay_cycles(11) */
+    delay_cycles(11);
 
     char c = 0;
     /* Lấy mẫu 8 bit dữ liệu tại điểm giữa mỗi bit */
     for (int i = 0; i < 8; i++) {
-        delay_cycles(31);
+        UART_BIT_DELAY();
         if (SN_GPIO3->DATA & (1UL << 11)) {
             c |= (1 << i);
         }
     }
 
     /* Chờ Stop bit */
-    delay_cycles(31);
+    UART_BIT_DELAY();
     __enable_irq();
 
     return c;

@@ -140,7 +140,7 @@
         <SetRegEntry>
           <Number>0</Number>
           <Key>SNLINK</Key>
-          <Name>-U-O78 -O78 -S0 -C0 -N00("ARM CoreSight SW-DP") -D00(0BB11477) -L00(0) -TO18 -TC10000000 -TP21 -TDS8000 -TDT0 -TDC1F -TIEFFFFFFFF -TIP8 -FO7 -FD20000000 -FC2000 -FN1 -FF0SN32F400_32.FLM -FS00 -FL08000 -FP0($$Device:SN32F407F$Flash\SN32F400_32.FLM)</Name>
+          <Name>-U-O78 -O78 -S0 -C0 -N00("ARM CoreSight SW-DP") -D00(0BB11477) -L00(0) -TO18 -TC10000000 -TP21 -TDS8000 -TDT0 -TDC1F -TIEFFFFFFFF -TIP8 -FO31 -FD20000000 -FC2000 -FN1 -FF0SN32F400_32.FLM -FS00 -FL08000 -FP0($$Device:SN32F407F$Flash\SN32F400_32.FLM)</Name>
         </SetRegEntry>
         <SetRegEntry>
           <Number>0</Number>
