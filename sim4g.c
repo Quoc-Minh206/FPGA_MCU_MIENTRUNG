@@ -55,46 +55,34 @@ static const char *u_strchr(const char *s, char c)
 
 void SIM4G_ClearRx(void)
 {
+    NVIC_DisableIRQ(UART1_IRQn);
     uint16_t i;
     for (i = 0; i < SIM_RX_BUFFER_SIZE; i++) g_sim_rx_buf[i] = 0;
     g_sim_rx_len = 0;
+    NVIC_EnableIRQ(UART1_IRQn);
 }
 
 /*=============================  NGAT UART1  ===============================*/
 void UART1_IRQHandler(void)
 {
-    uint32_t ii = SN_UART1->II;
-    uint32_t ls;
+    /* Doc Line Status register de tu dong xoa cac co loi duong truyen (RLS) */
+    volatile uint32_t ls = SN_UART1->LS;
+    (void)ls;
 
-    while ((ii & 0x01UL) == 0UL)            /* Co ngat dang cho             */
+    /* Doc toan bo byte dang co san trong RX FIFO vao bo dem */
+    while (SN_UART1->LS & 0x01UL)            /* RDR: Receiver Data Ready     */
     {
-        switch ((ii >> 1) & 0x07UL)
+        uint8_t b = (uint8_t)SN_UART1->RB;
+        if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
         {
-        case 3:                             /* RLS: Loi duong truyen        */
-            ls = SN_UART1->LS;
-            (void)ls;
-            (void)SN_UART1->RB;
-            break;
-
-        case 2:                             /* RDA: Co du lieu nhan         */
-        case 6:                             /* Timeout ky tu                */
-            while (SN_UART1->LS & 0x01UL)   /* RDR                          */
-            {
-                uint8_t b = (uint8_t)SN_UART1->RB;
-                if (g_sim_rx_len < (SIM_RX_BUFFER_SIZE - 1))
-                {
-                    g_sim_rx_buf[g_sim_rx_len++] = (char)b;
-                    g_sim_rx_buf[g_sim_rx_len] = '\0';
-                }
-            }
-            break;
-
-        default:
-            (void)SN_UART1->LS;
-            break;
+            g_sim_rx_buf[g_sim_rx_len++] = (char)b;
+            g_sim_rx_buf[g_sim_rx_len] = '\0';
         }
-        ii = SN_UART1->II;
     }
+
+    /* Doc Interrupt Identification de xoa triet de cac trang thai ngat con lai */
+    volatile uint32_t ii = SN_UART1->II;
+    (void)ii;
 }
 
 /*=============================  KHOI TAO  =================================*/
@@ -196,6 +184,10 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     uint8_t ctrl_z = 0x1A;
     uint32_t i, p_len;
 
+    /* 0. Gui ky tu ESC (0x1B) de huy moi che do nhap du lieu treo truoc do */
+    SIM4G_SendByte(0x1B);
+    Delay_ms(100);
+
     /* 1. Kiem tra module san sang (gui AT toi da 5 lan de dong bo baud) */
     uint8_t at_ok = 0;
     for (uint32_t k = 0; k < 5; k++) {
@@ -217,7 +209,7 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     SIM4G_SendCmd("AT+CMGF=1\r\n", "OK", 1000);
     SIM4G_SendCmd("AT+CSCS=\"GSM\"\r\n", "OK", 1000);
 
-    /* 3. Tao lenh AT+CMGS="<phone_number>"\r */
+    /* 3. Tao lenh AT+CMGS=\"<phone_number>\"\r */
     cmd[0] = 'A'; cmd[1] = 'T'; cmd[2] = '+'; cmd[3] = 'C';
     cmd[4] = 'M'; cmd[5] = 'G'; cmd[6] = 'S'; cmd[7] = '=';
     cmd[8] = '\"';
@@ -237,10 +229,16 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     while ((GetTick_ms() - t_start) < 5000)
     {
         if (u_strchr((const char *)g_sim_rx_buf, '>')) break;
-        if (u_strstr((const char *)g_sim_rx_buf, "ERROR")) return 0;
+        if (u_strstr((const char *)g_sim_rx_buf, "ERROR")) {
+            SIM4G_SendByte(0x1B);
+            return 0;
+        }
         Delay_ms(10);
     }
-    if (!u_strchr((const char *)g_sim_rx_buf, '>')) return 0;
+    if (!u_strchr((const char *)g_sim_rx_buf, '>')) {
+        SIM4G_SendByte(0x1B);
+        return 0;
+    }
 
     Delay_ms(200);
 
@@ -256,16 +254,25 @@ static uint8_t SIM4G_SendSMS_Internal(const char *phone_number, const char *mess
     {
         if (u_strstr((const char *)g_sim_rx_buf, "+CMGS") || u_strstr((const char *)g_sim_rx_buf, "OK"))
         {
+            /* Cho them 300ms de module phat het ky tu phan hoi, xoa sach bo dem */
+            Delay_ms(300);
+            SIM4G_ClearRx();
             g_sim_sms_sent = 1;
             return 1;
         }
         if (u_strstr((const char *)g_sim_rx_buf, "ERROR"))
         {
+            SIM4G_SendByte(0x1B);
+            Delay_ms(200);
+            SIM4G_ClearRx();
             return 0;
         }
         Delay_ms(50);
     }
 
+    SIM4G_SendByte(0x1B);
+    Delay_ms(200);
+    SIM4G_ClearRx();
     return 0;
 }
 

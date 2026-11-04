@@ -376,38 +376,24 @@ static void nmea_feed(char c)
 /*=============================  UART0  ====================================*/
 void UART0_IRQHandler(void)
 {
-    uint32_t ii, ls;
-    uint16_t next;
+    volatile uint32_t ls = SN_UART0->LS;
+    if (ls & 0x9EUL) g_gps.uart_err++;
 
-    ii = SN_UART0->II;
-    while ((ii & 0x01UL) == 0UL)            /* bit0 = 0 -> co ngat dang cho */
+    while (SN_UART0->LS & 0x01UL)   /* RDR: Receiver Data Ready */
     {
-        switch ((ii >> 1) & 0x07UL)
-        {
-        case 3:                             /* RLS: loi duong truyen        */
-            ls = SN_UART0->LS;
-            if (ls & 0x9EUL) g_gps.uart_err++;
-            (void)SN_UART0->RB;
-            break;
-
-        case 2:                             /* RDA                          */
-        case 6:                             /* time-out ky tu               */
-            while (SN_UART0->LS & 0x01UL)   /* RDR                          */
-            {
-                uint8_t b = (uint8_t)SN_UART0->RB;
-                g_gps.rx_bytes++;
-                next = (uint16_t)((s_head + 1U) & (RX_RING_SIZE - 1U));
-                if (next != s_tail) { s_ring[s_head] = b; s_head = next; }
-                else                { g_gps.uart_err++; }   /* tran bo dem */
-            }
-            break;
-
-        default:
-            (void)SN_UART0->LS;
-            break;
+        uint8_t b = (uint8_t)SN_UART0->RB;
+        g_gps.rx_bytes++;
+        uint16_t next = (uint16_t)((s_head + 1U) & (RX_RING_SIZE - 1U));
+        if (next != s_tail) {
+            s_ring[s_head] = b;
+            s_head = next;
+        } else {
+            g_gps.uart_err++;
         }
-        ii = SN_UART0->II;
     }
+
+    volatile uint32_t ii = SN_UART0->II;
+    (void)ii;
 }
 
 void GPS_Init(void)

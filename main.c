@@ -203,29 +203,38 @@ static uint8_t Dispatch_Emergency_SMS(void)
 /* Kích hoạt quy trình cứu hộ khẩn cấp hoàn chỉnh */
 static void Trigger_Emergency_SOS(void)
 {
-    /* 1. Bật đèn cảnh báo và còi hú báo hiệu tai nạn ngay lập tức */
+    /* 1. Bật đèn cảnh báo đỏ và phát còi bíp dài 400ms báo hiệu tai nạn ngay lập tức */
     ALERT_LED_ON();
-    BUZZER_ON();
     s_system_state = SYS_STATE_ACCIDENT_CONFIRMED;
     g_sim_sms_sent = 0;
 
-    /* 2. Gửi tin nhắn SMS ngay lập tức (trong lúc gửi, còi duy trì bíp cảnh báo) */
+    /* Còi hú dài 400ms báo hiệu tai nạn chuẩn như ban đầu */
+    Buzzer_Beep(400);
+    Delay_ms(100);
+
+    /* 2. Gửi tin nhắn SMS ngay lập tức (trong lúc gửi, còi duy trì bíp dồn dập 150ms/250ms) */
     uint8_t ok = Dispatch_Emergency_SMS();
 
     /* 3. Sau khi gửi xong: Tắt còi báo động, tắt đèn cảnh báo */
     BUZZER_OFF();
     ALERT_LED_OFF();
 
+    /* Chuyển về NORMAL trước để các tiếng bíp kết quả không bị còi dồn dập đè */
+    s_system_state = SYS_STATE_NORMAL;
+    g_sim_sms_sent = 0;
+
     /* 4. Phát âm thanh phản hồi kết quả */
     if (ok) {
         /* Bíp 3 tiếng ngắn (bíp - bíp - bíp) báo gửi tin nhắn SMS thành công! */
+        Delay_ms(150);
         Buzzer_Beep(120);
-        Delay_ms(80);
+        Delay_ms(100);
         Buzzer_Beep(120);
-        Delay_ms(80);
+        Delay_ms(100);
         Buzzer_Beep(120);
     } else {
         /* Bíp 1 tiếng dài 600ms nếu gửi không thành công */
+        Delay_ms(150);
         Buzzer_Beep(600);
     }
 
@@ -303,25 +312,27 @@ int main(void)
         if ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
             Delay_ms(30); /* Chống dội phím 30ms */
             if ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
-                /* Đợi người dùng thả phím SW3 ra */
+                /* Kích hoạt ngay lập tức quy trình SOS */
+                Trigger_Emergency_SOS();
+
+                /* Đợi người dùng thả phím SW3 ra và chống dội phím */
                 while ((SN_GPIO2->DATA & (1UL << 4)) == 0) {
                     GPS_Process();
                 }
-
-                /* Kích hoạt quy trình SOS: Hú còi báo động -> Gửi SMS -> Báo 3 tiếng -> Reset sẵn sàng bấm tiếp */
-                Trigger_Emergency_SOS();
+                Delay_ms(100);
             }
         }
 
         /* D. BẮT SỰ KIỆN XUNG TỪ FPGA (Pin 41 -> P2.9) KHI BẤM NÚT S1/S2 TRÊN BO FPGA:
          */
         if (SN_GPIO2->DATA & (1UL << 9)) {
+            Trigger_Emergency_SOS();
+
             /* Chờ kết thúc xung của FPGA */
             while (SN_GPIO2->DATA & (1UL << 9)) {
                 GPS_Process();
             }
-
-            Trigger_Emergency_SOS();
+            Delay_ms(100);
         }
 
         /* E. NÚT BẤM HỦY / RESET KHẨN CẤP (P2.7 CỌC P27 GẦN SW6 - BẢNG 5 CONSTRAIN.PDF): */
